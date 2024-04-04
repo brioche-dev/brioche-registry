@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+argon2 = { version = "0.5.3", features = ["std"] }
 axum = "0.7.5"
 clap = { version = "4.5.4", features = ["derive"] }
 color-eyre = "0.6.3"
