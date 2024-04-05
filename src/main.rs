@@ -1,9 +1,11 @@
-use std::{io::BufRead as _, sync::Arc};
+use std::{io::BufRead as _, sync::Arc, time::Duration};
 
 use argon2::{PasswordHasher as _, PasswordVerifier};
+use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
 use clap::Parser;
 use eyre::Context as _;
+use tracing::Span;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 #[derive(Debug, Parser)]
@@ -73,9 +75,25 @@ async fn serve(addr: &std::net::SocketAddr) -> eyre::Result<()> {
         .from_env()
         .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
     let state = Arc::new(ServerState::new(env));
+
+    let trace_layer = tower_http::trace::TraceLayer::new_for_http()
+        .make_span_with(|_req: &axum::http::Request<Body>| {
+            tracing::info_span!("request")
+        })
+        .on_request(|req: &axum::http::Request<Body>, _span: &Span| {
+            tracing::info!(method = %req.method(), path = %req.uri().path(), "received request")
+        })
+        .on_response(|res: &axum::http::Response<Body>, latency: Duration, _span: &Span| {
+            tracing::info!(status = res.status().as_u16(), latency = latency.as_secs_f32(), "response")
+        })
+        .on_failure(|err: tower_http::classify::ServerErrorsFailureClass, latency: Duration, _span: &Span| {
+            tracing::error!(error = %err, latency = latency.as_secs_f32(), "request failed")
+        });
+
     let app = axum::Router::new()
         .route("/", axum::routing::get(root_handler))
         .route("/admin", axum::routing::get(admin_handler))
+        .layer(trace_layer)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
