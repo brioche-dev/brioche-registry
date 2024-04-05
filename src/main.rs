@@ -69,7 +69,7 @@ async fn hash_password() -> eyre::Result<()> {
     let argon2 = argon2::Argon2::default();
     let password_hash = argon2.hash_password(password.as_bytes(), &salt)?;
 
-    println!("BRIOCHE_REGISTRY_PASSWORD_HASH={password_hash}");
+    println!("BRIOCHE_REGISTRY_PASSWORD_HASH='{password_hash}'");
 
     Ok(())
 }
