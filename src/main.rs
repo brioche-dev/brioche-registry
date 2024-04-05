@@ -59,6 +59,10 @@ async fn hash_password() -> eyre::Result<()> {
         let mut password = String::new();
         let mut stdin = std::io::stdin().lock();
         stdin.read_line(&mut password).unwrap();
+
+        // Remove the trailing newline from the password
+        let password = password.lines().next().unwrap().to_string();
+
         password_tx.send(password).unwrap();
     });
 
