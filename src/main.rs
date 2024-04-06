@@ -78,9 +78,12 @@ impl ServerState {
 
         let db_opts = sqlx::sqlite::SqliteConnectOptions::from_str(&env.database_url)?
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        let db_filename = db_opts.clone().get_filename();
         let db_pool = sqlx::sqlite::SqlitePoolOptions::new()
             .connect_with(db_opts)
             .await?;
+
+        tracing::info!(db_filename = %db_filename.display(), "set up database connection");
 
         Ok(Self {
             env,
