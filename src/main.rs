@@ -3,8 +3,9 @@ use std::{io::BufRead as _, sync::Arc, time::Duration};
 use argon2::{PasswordHasher as _, PasswordVerifier};
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
+use brioche::brioche::{project::ProjectListing, vfs::FileId};
 use clap::Parser;
-use eyre::Context as _;
+use eyre::{Context as _, OptionExt};
 use tracing::Span;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
@@ -51,16 +52,27 @@ async fn main() -> eyre::Result<()> {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ServerEnv {
+    object_store_url: url::Url,
     password_hash: String,
 }
 
 struct ServerState {
     env: ServerEnv,
+    object_store: Box<dyn object_store::ObjectStore>,
+    object_store_path: object_store::path::Path,
 }
 
 impl ServerState {
-    fn new(env: ServerEnv) -> Self {
-        Self { env }
+    fn new(env: ServerEnv) -> eyre::Result<Self> {
+        let object_store_opts = std::env::vars().map(|(k, v)| (k, v.to_ascii_lowercase()));
+        let (object_store, object_store_path) =
+            object_store::parse_url_opts(&env.object_store_url, object_store_opts)?;
+
+        Ok(Self {
+            env,
+            object_store,
+            object_store_path,
+        })
     }
 
     fn password_hash(&self) -> eyre::Result<argon2::PasswordHash<'_>> {
@@ -74,7 +86,8 @@ async fn serve(addr: &std::net::SocketAddr) -> eyre::Result<()> {
     let env: ServerEnv = envy::prefixed("BRIOCHE_REGISTRY_")
         .from_env()
         .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
-    let state = Arc::new(ServerState::new(env));
+    let state = ServerState::new(env)?;
+    let state = Arc::new(state);
 
     let trace_layer = tower_http::trace::TraceLayer::new_for_http()
         .make_span_with(|_req: &axum::http::Request<Body>| {
@@ -91,8 +104,8 @@ async fn serve(addr: &std::net::SocketAddr) -> eyre::Result<()> {
         });
 
     let app = axum::Router::new()
-        .route("/", axum::routing::get(root_handler))
-        .route("/admin", axum::routing::get(admin_handler))
+        .route("/projects", axum::routing::post(publish_project_handler))
+        .route("/blobs/:file_id", axum::routing::get(get_blob_handler))
         .layer(trace_layer)
         .with_state(state);
 
@@ -132,15 +145,80 @@ async fn hash_password() -> eyre::Result<()> {
     Ok(())
 }
 
-async fn root_handler() -> &'static str {
-    "Hello, World!"
+async fn publish_project_handler(
+    Authenticated(state): Authenticated,
+    project_listing: axum::Json<ProjectListing>,
+) -> Result<axum::http::StatusCode, HttpError> {
+    let mut subprojects = vec![project_listing.root_project];
+
+    // TODO: Parallelize upload
+    while let Some(subproject_hash) = subprojects.pop() {
+        let subproject = project_listing
+            .projects
+            .get(&subproject_hash)
+            .ok_or_eyre("subproject not found in project listing")?;
+        for dep_hash in subproject.dependencies.values() {
+            subprojects.push(*dep_hash);
+        }
+        for module_id in subproject.modules.values() {
+            let module_contents = project_listing
+                .files
+                .get(module_id)
+                .ok_or_eyre("module not found in project listing")?;
+            let module_path = state
+                .object_store_path
+                .child("blobs")
+                .child(module_id.to_string());
+
+            state
+                .object_store
+                .put(
+                    &module_path,
+                    bytes::Bytes::copy_from_slice(&module_contents),
+                )
+                .await
+                .wrap_err("failed to upload module to object store")?;
+        }
+    }
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
-async fn admin_handler(_: Authenticated) -> &'static str {
-    "Hello, admin"
+async fn get_blob_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::extract::Path(file_id): axum::extract::Path<FileId>,
+) -> Result<axum::response::Response, HttpError> {
+    let file_path = state
+        .object_store_path
+        .child("blobs")
+        .child(file_id.to_string());
+    let object = state.object_store.get(&file_path).await;
+    let object = match object {
+        Ok(object) => object,
+        Err(object_store::Error::NotFound { .. }) => {
+            return Err(HttpError::NotFound);
+        }
+        Err(error) => {
+            return Err(HttpError::Other(error.into()));
+        }
+    };
+
+    let body = match object.payload {
+        object_store::GetResultPayload::File(file, _) => {
+            let file = tokio::fs::File::from_std(file);
+            let stream = tokio_util::io::ReaderStream::new(file);
+            axum::body::Body::from_stream(stream)
+        }
+        object_store::GetResultPayload::Stream(stream) => axum::body::Body::from_stream(stream),
+    };
+    let response = axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
+        .body(body)
+        .map_err(|err| HttpError::Other(err.into()))?;
+    Ok(response)
 }
 
-struct Authenticated(());
+struct Authenticated(Arc<ServerState>);
 
 #[async_trait::async_trait]
 impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
@@ -158,7 +236,7 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
             .verify_password(authorization.password().as_bytes(), &state.password_hash()?)
             .is_ok();
         if username_matches && password_matches {
-            Ok(Self(()))
+            Ok(Self(state.clone()))
         } else {
             Err(HttpError::InvalidCredentials)
         }
@@ -169,6 +247,9 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
 enum HttpError {
     #[error("internal error")]
     Other(#[from] eyre::Error),
+
+    #[error("not found")]
+    NotFound,
 
     #[error("username or password did not match")]
     InvalidCredentials,
@@ -188,6 +269,7 @@ impl axum::response::IntoResponse for HttpError {
                 tracing::error!(error = %error, "internal error");
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
+            HttpError::NotFound => axum::http::StatusCode::NOT_FOUND,
             HttpError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
             HttpError::TypedHeaderRejection(rejection) => rejection.into_response().status(),
         };
