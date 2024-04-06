@@ -300,7 +300,7 @@ impl axum::response::IntoResponse for HttpError {
 
         let status_code = match self {
             HttpError::Other(error) => {
-                tracing::error!(error = %error, "internal error");
+                tracing::error!("internal error: {error:#}");
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
             HttpError::NotFound => axum::http::StatusCode::NOT_FOUND,
