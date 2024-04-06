@@ -3,9 +3,12 @@ use std::{io::BufRead as _, str::FromStr as _, sync::Arc, time::Duration};
 use argon2::{PasswordHasher as _, PasswordVerifier};
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
-use brioche::brioche::{project::ProjectListing, vfs::FileId};
+use brioche::brioche::{
+    project::{Project, ProjectHash, ProjectListing},
+    vfs::FileId,
+};
 use clap::Parser;
-use eyre::{Context as _, OptionExt};
+use eyre::Context as _;
 use tracing::Span;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
@@ -156,6 +159,10 @@ async fn serve(addr: &std::net::SocketAddr, no_migrate: bool) -> eyre::Result<()
 
     let app = axum::Router::new()
         .route("/projects", axum::routing::post(publish_project_handler))
+        .route(
+            "/projects/:project_hash",
+            axum::routing::get(get_project_handler),
+        )
         .route("/blobs/:file_id", axum::routing::get(get_blob_handler))
         .layer(trace_layer)
         .with_state(state);
@@ -196,43 +203,92 @@ async fn hash_password() -> eyre::Result<()> {
     Ok(())
 }
 
+async fn get_project_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::extract::Path(project_hash): axum::extract::Path<ProjectHash>,
+) -> Result<axum::Json<Project>, HttpError> {
+    let project_hash_bytes = project_hash.blake3().as_bytes().as_slice();
+    let record = sqlx::query!(
+        "SELECT project_json FROM projects WHERE project_hash = ?",
+        project_hash_bytes
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .wrap_err("failed to fetch project from database")?;
+    let record = record.first().ok_or(HttpError::NotFound)?;
+
+    let project: Project =
+        serde_json::from_str(&record.project_json).wrap_err("failed to parse project")?;
+    Ok(axum::Json(project))
+}
+
 async fn publish_project_handler(
     Authenticated(state): Authenticated,
-    project_listing: axum::Json<ProjectListing>,
-) -> Result<axum::http::StatusCode, HttpError> {
-    let mut subprojects = vec![project_listing.root_project];
+    axum::Json(project_listing): axum::Json<ProjectListing>,
+) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), HttpError> {
+    let mut new_files = 0;
+    for (file_id, file_contents) in &project_listing.files {
+        let file_path = state
+            .object_store_path
+            .child("blobs")
+            .child(file_id.to_string());
+        let result = state
+            .object_store
+            .put_opts(
+                &file_path,
+                bytes::Bytes::copy_from_slice(&file_contents),
+                object_store::PutOptions {
+                    mode: object_store::PutMode::Create,
+                    ..Default::default()
+                },
+            )
+            .await;
 
-    // TODO: Parallelize upload
-    while let Some(subproject_hash) = subprojects.pop() {
-        let subproject = project_listing
-            .projects
-            .get(&subproject_hash)
-            .ok_or_eyre("subproject not found in project listing")?;
-        for dep_hash in subproject.dependencies.values() {
-            subprojects.push(*dep_hash);
-        }
-        for module_id in subproject.modules.values() {
-            let module_contents = project_listing
-                .files
-                .get(module_id)
-                .ok_or_eyre("module not found in project listing")?;
-            let module_path = state
-                .object_store_path
-                .child("blobs")
-                .child(module_id.to_string());
-
-            state
-                .object_store
-                .put(
-                    &module_path,
-                    bytes::Bytes::copy_from_slice(&module_contents),
-                )
-                .await
-                .wrap_err("failed to upload module to object store")?;
+        match result {
+            Ok(_) => {
+                new_files += 1;
+            }
+            Err(object_store::Error::AlreadyExists { .. }) => {
+                // File already uploaded, so ignore
+            }
+            Err(error) => {
+                return Err(HttpError::other(error));
+            }
         }
     }
 
-    Ok(axum::http::StatusCode::NO_CONTENT)
+    let mut new_projects = 0;
+    for (project_hash, project) in &project_listing.projects {
+        let project_hash_bytes = project_hash.blake3().as_bytes().as_slice();
+        let project_json = serde_json::to_string(&project).map_err(HttpError::other)?;
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO projects (project_hash, project_json) VALUES (?, ?)",
+            project_hash_bytes,
+            project_json
+        )
+        .execute(&state.db_pool)
+        .await
+        .map_err(HttpError::other)?;
+
+        new_projects += result.rows_affected();
+    }
+
+    tracing::info!(new_files, new_projects, root_project = %project_listing.root_project, "published project");
+
+    let response = PublishProjectResponse {
+        root_project: project_listing.root_project,
+        new_files,
+        new_projects,
+    };
+    Ok((axum::http::StatusCode::CREATED, axum::Json(response)))
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublishProjectResponse {
+    root_project: ProjectHash,
+    new_files: u64,
+    new_projects: u64,
 }
 
 async fn get_blob_handler(
@@ -250,7 +306,7 @@ async fn get_blob_handler(
             return Err(HttpError::NotFound);
         }
         Err(error) => {
-            return Err(HttpError::Other(error.into()));
+            return Err(HttpError::other(error));
         }
     };
 
@@ -265,7 +321,7 @@ async fn get_blob_handler(
     let response = axum::response::Response::builder()
         .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
         .body(body)
-        .map_err(|err| HttpError::Other(err.into()))?;
+        .map_err(HttpError::other)?;
     Ok(response)
 }
 
@@ -307,6 +363,12 @@ enum HttpError {
 
     #[error(transparent)]
     TypedHeaderRejection(#[from] axum_extra::typed_header::TypedHeaderRejection),
+}
+
+impl HttpError {
+    fn other(error: impl Into<eyre::Error>) -> Self {
+        Self::Other(error.into())
+    }
 }
 
 impl axum::response::IntoResponse for HttpError {
