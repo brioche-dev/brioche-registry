@@ -1,0 +1,5 @@
+CREATE TABLE projects (
+    project_hash BLOB PRIMARY KEY NOT NULL,
+    project_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+) STRICT;
