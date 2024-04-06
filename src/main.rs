@@ -11,9 +11,12 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 
 #[derive(Debug, Parser)]
 enum Args {
+    Migrate,
     Serve {
         #[clap(default_value = "0.0.0.0:2000")]
         addr: std::net::SocketAddr,
+        #[clap(long)]
+        no_migrate: bool,
     },
     HashPassword,
 }
@@ -39,8 +42,11 @@ async fn main() -> eyre::Result<()> {
     let args = Args::parse();
 
     match args {
-        Args::Serve { addr } => {
-            serve(&addr).await?;
+        Args::Migrate => {
+            migrate().await?;
+        }
+        Args::Serve { addr, no_migrate } => {
+            serve(&addr, no_migrate).await?;
         }
         Args::HashPassword => {
             hash_password().await?;
@@ -91,12 +97,28 @@ impl ServerState {
     }
 }
 
-async fn serve(addr: &std::net::SocketAddr) -> eyre::Result<()> {
+async fn migrate() -> eyre::Result<()> {
+    let env: ServerEnv = envy::prefixed("BRIOCHE_REGISTRY_")
+        .from_env()
+        .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
+    let state = ServerState::new(env).await?;
+
+    sqlx::migrate!().run(&state.db_pool).await?;
+
+    Ok(())
+}
+
+async fn serve(addr: &std::net::SocketAddr, no_migrate: bool) -> eyre::Result<()> {
     let env: ServerEnv = envy::prefixed("BRIOCHE_REGISTRY_")
         .from_env()
         .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
     let state = ServerState::new(env).await?;
     let state = Arc::new(state);
+
+    if !no_migrate {
+        tracing::info!("running database migrations");
+        sqlx::migrate!().run(&state.db_pool).await?;
+    }
 
     let trace_layer = tower_http::trace::TraceLayer::new_for_http()
         .make_span_with(|_req: &axum::http::Request<Body>| {
