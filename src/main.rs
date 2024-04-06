@@ -1,4 +1,4 @@
-use std::{io::BufRead as _, sync::Arc, time::Duration};
+use std::{io::BufRead as _, str::FromStr as _, sync::Arc, time::Duration};
 
 use argon2::{PasswordHasher as _, PasswordVerifier};
 use axum::body::Body;
@@ -52,6 +52,7 @@ async fn main() -> eyre::Result<()> {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ServerEnv {
+    database_url: String,
     object_store_url: url::Url,
     password_hash: String,
 }
@@ -60,18 +61,26 @@ struct ServerState {
     env: ServerEnv,
     object_store: Box<dyn object_store::ObjectStore>,
     object_store_path: object_store::path::Path,
+    db_pool: sqlx::SqlitePool,
 }
 
 impl ServerState {
-    fn new(env: ServerEnv) -> eyre::Result<Self> {
+    async fn new(env: ServerEnv) -> eyre::Result<Self> {
         let object_store_opts = std::env::vars().map(|(k, v)| (k, v.to_ascii_lowercase()));
         let (object_store, object_store_path) =
             object_store::parse_url_opts(&env.object_store_url, object_store_opts)?;
+
+        let db_opts = sqlx::sqlite::SqliteConnectOptions::from_str(&env.database_url)?
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        let db_pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(db_opts)
+            .await?;
 
         Ok(Self {
             env,
             object_store,
             object_store_path,
+            db_pool,
         })
     }
 
@@ -86,7 +95,7 @@ async fn serve(addr: &std::net::SocketAddr) -> eyre::Result<()> {
     let env: ServerEnv = envy::prefixed("BRIOCHE_REGISTRY_")
         .from_env()
         .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
-    let state = ServerState::new(env)?;
+    let state = ServerState::new(env).await?;
     let state = Arc::new(state);
 
     let trace_layer = tower_http::trace::TraceLayer::new_for_http()
