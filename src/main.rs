@@ -72,9 +72,26 @@ struct ServerState {
 
 impl ServerState {
     async fn new(env: ServerEnv) -> eyre::Result<Self> {
+        // Handle the special `relative-file` URL (primarily for development)
+        let object_store_url = match env.object_store_url.scheme() {
+            "relative-file" => {
+                let relative_path = env.object_store_url.path();
+                let relative_path = relative_path.strip_prefix("/").unwrap_or(relative_path);
+                let abs_path = tokio::fs::canonicalize(std::path::Path::new(relative_path))
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "failed to canonicalize relative object store path: {relative_path}"
+                        )
+                    })?;
+                url::Url::from_directory_path(abs_path)
+                    .map_err(|_| eyre::eyre!("failed to create object store URL"))?
+            }
+            _ => env.object_store_url.clone(),
+        };
         let object_store_opts = std::env::vars().map(|(k, v)| (k, v.to_ascii_lowercase()));
         let (object_store, object_store_path) =
-            object_store::parse_url_opts(&env.object_store_url, object_store_opts)?;
+            object_store::parse_url_opts(&object_store_url, object_store_opts)?;
 
         let db_opts = sqlx::sqlite::SqliteConnectOptions::from_str(&env.database_url)?
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
