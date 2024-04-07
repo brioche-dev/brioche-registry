@@ -1,4 +1,4 @@
-use std::{str::FromStr as _, sync::Arc, time::Duration};
+use std::{borrow::Cow, str::FromStr as _, sync::Arc, time::Duration};
 
 use argon2::PasswordVerifier;
 use axum::body::Body;
@@ -7,7 +7,7 @@ use brioche::brioche::{
     project::{Project, ProjectHash, ProjectListing},
     vfs::FileId,
 };
-use eyre::Context as _;
+use eyre::{Context as _, OptionExt as _};
 use tracing::Span;
 
 pub async fn start_server(
@@ -170,12 +170,114 @@ async fn publish_project_handler(
         new_projects += result.rows_affected();
     }
 
-    tracing::info!(new_files, new_projects, root_project = %project_listing.root_project, "published project");
+    let root_project_hash = project_listing.root_project;
+    let root_project_hash_bytes = root_project_hash.blake3().as_bytes().as_slice();
+    let root_project = project_listing
+        .projects
+        .get(&project_listing.root_project)
+        .ok_or(ServerError::BadRequest(Cow::Borrowed(
+            "root project not found in project list",
+        )))?;
+    let root_project_name =
+        root_project
+            .definition
+            .name
+            .as_ref()
+            .ok_or(ServerError::BadRequest(Cow::Borrowed(
+                "cannot publish a project without a name",
+            )))?;
+
+    // Tag with `latest` plus the version number
+    let root_project_tags = ["latest"]
+        .into_iter()
+        .chain(root_project.definition.version.as_deref());
+
+    let mut tags = vec![];
+
+    for tag in root_project_tags {
+        let update_result = sqlx::query!(
+            r#"
+                UPDATE project_tags
+                SET is_current = NULL
+                WHERE
+                    name = ?
+                    AND tag = ?
+                    AND project_hash <> ?
+                    AND is_current
+                RETURNING project_hash
+            "#,
+            root_project_name,
+            tag,
+            root_project_hash_bytes,
+        )
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(ServerError::other)?;
+
+        let inserted_records = sqlx::query!(
+            r#"
+                INSERT INTO project_tags (
+                    name,
+                    tag,
+                    project_hash,
+                    is_current
+                ) VALUES (?, ?, ?, TRUE)
+                ON CONFLICT (name, tag, is_current) DO NOTHING
+                RETURNING name, tag
+            "#,
+            root_project_name,
+            tag,
+            root_project_hash_bytes,
+        )
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(ServerError::other)?;
+
+        // Run a query to make sure the current tag matches the expected
+        // project hash. This is a sanity check
+
+        let records = sqlx::query!(
+            r#"
+                SELECT project_hash
+                FROM project_tags
+                WHERE name = ? AND tag = ? AND is_current = TRUE
+            "#,
+            root_project_name,
+            tag
+        )
+        .fetch_all(&state.db_pool)
+        .await
+        .map_err(ServerError::other)?;
+
+        let record = records
+            .first()
+            .ok_or_eyre("failed to get updated project tag")
+            .map_err(ServerError::other)?;
+        if record.project_hash.as_slice() != root_project_hash_bytes {
+            return Err(ServerError::Other(eyre::eyre!("project tag did not match")));
+        }
+
+        let previous_hash = update_result.first().and_then(|record| {
+            let project_hash = record.project_hash.as_slice().try_into().ok()?;
+            Some(blake3::Hash::from_bytes(project_hash))
+        });
+
+        for record in inserted_records {
+            tags.push(UpdatedTag {
+                name: record.name.to_string(),
+                tag: record.tag.to_string(),
+                previous_hash,
+            });
+        }
+    }
+
+    tracing::info!(new_files, new_projects, root_project = %project_listing.root_project, ?tags, "published project");
 
     let response = PublishProjectResponse {
         root_project: project_listing.root_project,
         new_files,
         new_projects,
+        tags,
     };
     Ok((axum::http::StatusCode::CREATED, axum::Json(response)))
 }
@@ -186,6 +288,17 @@ struct PublishProjectResponse {
     root_project: ProjectHash,
     new_files: u64,
     new_projects: u64,
+    tags: Vec<UpdatedTag>,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdatedTag {
+    name: String,
+    tag: String,
+    #[serde_as(as = "Option<serde_with::DisplayFromStr>")]
+    previous_hash: Option<blake3::Hash>,
 }
 
 async fn get_blob_handler(
@@ -255,6 +368,9 @@ enum ServerError {
     #[error("not found")]
     NotFound,
 
+    #[error("{0}")]
+    BadRequest(Cow<'static, str>),
+
     #[error("username or password did not match")]
     InvalidCredentials,
 
@@ -279,6 +395,7 @@ impl axum::response::IntoResponse for ServerError {
                 tracing::error!("internal error: {error:#}");
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
+            ServerError::BadRequest(_) => axum::http::StatusCode::BAD_REQUEST,
             ServerError::NotFound => axum::http::StatusCode::NOT_FOUND,
             ServerError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
             ServerError::TypedHeaderRejection(rejection) => rejection.into_response().status(),

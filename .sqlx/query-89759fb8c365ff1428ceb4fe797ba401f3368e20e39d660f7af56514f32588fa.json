@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO project_tags (\n                    name,\n                    tag,\n                    project_hash,\n                    is_current\n                ) VALUES (?, ?, ?, TRUE)\n                ON CONFLICT (name, tag, is_current) DO NOTHING\n                RETURNING name, tag\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "tag",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "89759fb8c365ff1428ceb4fe797ba401f3368e20e39d660f7af56514f32588fa"
+}

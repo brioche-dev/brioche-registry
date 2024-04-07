@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE project_tags\n                SET is_current = NULL\n                WHERE\n                    name = ?\n                    AND tag = ?\n                    AND project_hash <> ?\n                    AND is_current\n                RETURNING project_hash\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "project_hash",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5d5656f8192bc5515f96f1f915eb142471d4f4f8ea7fbe854d73a59e0263fb0d"
+}
