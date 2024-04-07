@@ -104,10 +104,10 @@ async fn get_project_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(project_hash): axum::extract::Path<ProjectHash>,
 ) -> Result<axum::Json<Project>, ServerError> {
-    let project_hash_bytes = project_hash.blake3().as_bytes().as_slice();
+    let project_hash_bytes = project_hash.as_slice();
     let record = sqlx::query!(
         "SELECT project_json FROM projects WHERE project_hash = ?",
-        project_hash_bytes
+        project_hash_bytes,
     )
     .fetch_all(&state.db_pool)
     .await
@@ -156,7 +156,7 @@ async fn publish_project_handler(
 
     let mut new_projects = 0;
     for (project_hash, project) in &project_listing.projects {
-        let project_hash_bytes = project_hash.blake3().as_bytes().as_slice();
+        let project_hash_bytes = project_hash.as_slice();
         let project_json = serde_json::to_string(&project).map_err(ServerError::other)?;
         let result = sqlx::query!(
             "INSERT OR IGNORE INTO projects (project_hash, project_json) VALUES (?, ?)",
@@ -171,7 +171,7 @@ async fn publish_project_handler(
     }
 
     let root_project_hash = project_listing.root_project;
-    let root_project_hash_bytes = root_project_hash.blake3().as_bytes().as_slice();
+    let root_project_hash_bytes = root_project_hash.as_slice();
     let root_project = project_listing
         .projects
         .get(&project_listing.root_project)
@@ -257,10 +257,9 @@ async fn publish_project_handler(
             return Err(ServerError::Other(eyre::eyre!("project tag did not match")));
         }
 
-        let previous_hash = update_result.first().and_then(|record| {
-            let project_hash = record.project_hash.as_slice().try_into().ok()?;
-            Some(blake3::Hash::from_bytes(project_hash))
-        });
+        let previous_hash = update_result
+            .first()
+            .and_then(|record| ProjectHash::try_from_slice(&record.project_hash).ok());
 
         for record in inserted_records {
             tags.push(UpdatedTag {
@@ -298,7 +297,7 @@ struct UpdatedTag {
     name: String,
     tag: String,
     #[serde_as(as = "Option<serde_with::DisplayFromStr>")]
-    previous_hash: Option<blake3::Hash>,
+    previous_hash: Option<ProjectHash>,
 }
 
 async fn get_blob_handler(
