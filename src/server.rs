@@ -154,6 +154,8 @@ async fn publish_project_handler(
         }
     }
 
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
     let mut new_projects = 0;
     for (project_hash, project) in &project_listing.projects {
         let project_hash_bytes = project_hash.as_slice();
@@ -163,7 +165,7 @@ async fn publish_project_handler(
             project_hash_bytes,
             project_json
         )
-        .execute(&state.db_pool)
+        .execute(&mut *db_transaction)
         .await
         .map_err(ServerError::other)?;
 
@@ -210,7 +212,7 @@ async fn publish_project_handler(
             tag,
             root_project_hash_bytes,
         )
-        .fetch_all(&state.db_pool)
+        .fetch_all(&mut *db_transaction)
         .await
         .map_err(ServerError::other)?;
 
@@ -229,7 +231,7 @@ async fn publish_project_handler(
             tag,
             root_project_hash_bytes,
         )
-        .fetch_all(&state.db_pool)
+        .fetch_all(&mut *db_transaction)
         .await
         .map_err(ServerError::other)?;
 
@@ -245,7 +247,7 @@ async fn publish_project_handler(
             root_project_name,
             tag
         )
-        .fetch_all(&state.db_pool)
+        .fetch_all(&mut *db_transaction)
         .await
         .map_err(ServerError::other)?;
 
@@ -269,6 +271,8 @@ async fn publish_project_handler(
             });
         }
     }
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
 
     tracing::info!(new_files, new_projects, root_project = %project_listing.root_project, ?tags, "published project");
 
