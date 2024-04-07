@@ -103,7 +103,7 @@ impl ServerState {
 async fn get_project_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(project_hash): axum::extract::Path<ProjectHash>,
-) -> Result<axum::Json<Project>, HttpError> {
+) -> Result<axum::Json<Project>, ServerError> {
     let project_hash_bytes = project_hash.blake3().as_bytes().as_slice();
     let record = sqlx::query!(
         "SELECT project_json FROM projects WHERE project_hash = ?",
@@ -112,7 +112,7 @@ async fn get_project_handler(
     .fetch_all(&state.db_pool)
     .await
     .wrap_err("failed to fetch project from database")?;
-    let record = record.first().ok_or(HttpError::NotFound)?;
+    let record = record.first().ok_or(ServerError::NotFound)?;
 
     let project: Project =
         serde_json::from_str(&record.project_json).wrap_err("failed to parse project")?;
@@ -122,7 +122,7 @@ async fn get_project_handler(
 async fn publish_project_handler(
     Authenticated(state): Authenticated,
     axum::Json(project_listing): axum::Json<ProjectListing>,
-) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), HttpError> {
+) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), ServerError> {
     let mut new_files = 0;
     for (file_id, file_contents) in &project_listing.files {
         let file_path = state
@@ -149,7 +149,7 @@ async fn publish_project_handler(
                 // File already uploaded, so ignore
             }
             Err(error) => {
-                return Err(HttpError::other(error));
+                return Err(ServerError::other(error));
             }
         }
     }
@@ -157,7 +157,7 @@ async fn publish_project_handler(
     let mut new_projects = 0;
     for (project_hash, project) in &project_listing.projects {
         let project_hash_bytes = project_hash.blake3().as_bytes().as_slice();
-        let project_json = serde_json::to_string(&project).map_err(HttpError::other)?;
+        let project_json = serde_json::to_string(&project).map_err(ServerError::other)?;
         let result = sqlx::query!(
             "INSERT OR IGNORE INTO projects (project_hash, project_json) VALUES (?, ?)",
             project_hash_bytes,
@@ -165,7 +165,7 @@ async fn publish_project_handler(
         )
         .execute(&state.db_pool)
         .await
-        .map_err(HttpError::other)?;
+        .map_err(ServerError::other)?;
 
         new_projects += result.rows_affected();
     }
@@ -191,7 +191,7 @@ struct PublishProjectResponse {
 async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(file_id): axum::extract::Path<FileId>,
-) -> Result<axum::response::Response, HttpError> {
+) -> Result<axum::response::Response, ServerError> {
     let file_path = state
         .object_store_path
         .child("blobs")
@@ -200,10 +200,10 @@ async fn get_blob_handler(
     let object = match object {
         Ok(object) => object,
         Err(object_store::Error::NotFound { .. }) => {
-            return Err(HttpError::NotFound);
+            return Err(ServerError::NotFound);
         }
         Err(error) => {
-            return Err(HttpError::other(error));
+            return Err(ServerError::other(error));
         }
     };
 
@@ -218,7 +218,7 @@ async fn get_blob_handler(
     let response = axum::response::Response::builder()
         .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
         .body(body)
-        .map_err(HttpError::other)?;
+        .map_err(ServerError::other)?;
     Ok(response)
 }
 
@@ -226,7 +226,7 @@ struct Authenticated(Arc<ServerState>);
 
 #[async_trait::async_trait]
 impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
-    type Rejection = HttpError;
+    type Rejection = ServerError;
 
     async fn from_request_parts(
         parts: &mut axum::http::request::Parts,
@@ -242,13 +242,13 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
         if username_matches && password_matches {
             Ok(Self(state.clone()))
         } else {
-            Err(HttpError::InvalidCredentials)
+            Err(ServerError::InvalidCredentials)
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-enum HttpError {
+enum ServerError {
     #[error("internal error")]
     Other(#[from] eyre::Error),
 
@@ -262,26 +262,26 @@ enum HttpError {
     TypedHeaderRejection(#[from] axum_extra::typed_header::TypedHeaderRejection),
 }
 
-impl HttpError {
+impl ServerError {
     fn other(error: impl Into<eyre::Error>) -> Self {
         Self::Other(error.into())
     }
 }
 
-impl axum::response::IntoResponse for HttpError {
+impl axum::response::IntoResponse for ServerError {
     fn into_response(self) -> axum::response::Response {
         let body = serde_json::json!({
             "error": self.to_string(),
         });
 
         let status_code = match self {
-            HttpError::Other(error) => {
+            ServerError::Other(error) => {
                 tracing::error!("internal error: {error:#}");
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
-            HttpError::NotFound => axum::http::StatusCode::NOT_FOUND,
-            HttpError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
-            HttpError::TypedHeaderRejection(rejection) => rejection.into_response().status(),
+            ServerError::NotFound => axum::http::StatusCode::NOT_FOUND,
+            ServerError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
+            ServerError::TypedHeaderRejection(rejection) => rejection.into_response().status(),
         };
 
         (status_code, axum::response::Json(body)).into_response()
