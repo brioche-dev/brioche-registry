@@ -34,6 +34,10 @@ pub async fn start_server(
             "/projects/:project_hash",
             axum::routing::get(get_project_handler),
         )
+        .route(
+            "/project-tags/:project_name/:tag",
+            axum::routing::get(get_project_tag_handler),
+        )
         .route("/blobs/:file_id", axum::routing::get(get_blob_handler))
         .layer(trace_layer)
         .with_state(state);
@@ -117,6 +121,34 @@ async fn get_project_handler(
     let project: Project =
         serde_json::from_str(&record.project_json).wrap_err("failed to parse project")?;
     Ok(axum::Json(project))
+}
+
+async fn get_project_tag_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::extract::Path((project_name, tag)): axum::extract::Path<(String, String)>,
+) -> Result<axum::Json<GetProjectTagResponse>, ServerError> {
+    let records = sqlx::query!(
+        "SELECT project_hash FROM project_tags WHERE name = ? AND tag = ? AND is_current",
+        project_name,
+        tag,
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .wrap_err("failed to fetch project tags from database")?;
+    let record = records.first().ok_or(ServerError::NotFound)?;
+
+    let project_hash = ProjectHash::try_from_slice(&record.project_hash)
+        .map_err(|error| eyre::eyre!(error))
+        .wrap_err("failed to parse project hash from database")
+        .map_err(ServerError::other)?;
+    let response = GetProjectTagResponse { project_hash };
+    Ok(axum::Json(response))
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetProjectTagResponse {
+    project_hash: ProjectHash,
 }
 
 async fn publish_project_handler(
