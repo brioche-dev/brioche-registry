@@ -3,8 +3,9 @@ use std::{borrow::Cow, str::FromStr as _, sync::Arc, time::Duration};
 use argon2::PasswordVerifier;
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
-use brioche::brioche::{
+use brioche::{
     project::{Project, ProjectHash, ProjectListing},
+    registry::{GetProjectTagResponse, PublishProjectResponse, UpdatedTag},
     vfs::FileId,
 };
 use eyre::{Context as _, OptionExt as _};
@@ -143,12 +144,6 @@ async fn get_project_tag_handler(
         .map_err(ServerError::other)?;
     let response = GetProjectTagResponse { project_hash };
     Ok(axum::Json(response))
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GetProjectTagResponse {
-    project_hash: ProjectHash,
 }
 
 async fn publish_project_handler(
@@ -315,25 +310,6 @@ async fn publish_project_handler(
         tags,
     };
     Ok((axum::http::StatusCode::CREATED, axum::Json(response)))
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PublishProjectResponse {
-    root_project: ProjectHash,
-    new_files: u64,
-    new_projects: u64,
-    tags: Vec<UpdatedTag>,
-}
-
-#[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdatedTag {
-    name: String,
-    tag: String,
-    #[serde_as(as = "Option<serde_with::DisplayFromStr>")]
-    previous_hash: Option<ProjectHash>,
 }
 
 async fn get_blob_handler(
