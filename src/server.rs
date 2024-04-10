@@ -90,7 +90,7 @@ impl ServerState {
             }
             _ => env.object_store_url.clone(),
         };
-        let object_store_opts = std::env::vars().map(|(k, v)| (k, v.to_ascii_lowercase()));
+        let object_store_opts = std::env::vars().map(|(k, v)| (k.to_ascii_lowercase(), v));
         let (object_store, object_store_path) =
             object_store::parse_url_opts(&object_store_url, object_store_opts)?;
 
