@@ -64,7 +64,7 @@ struct ServerEnv {
 async fn migrate() -> eyre::Result<()> {
     let env: ServerEnv = envy::prefixed("BRIOCHE_REGISTRY_")
         .from_env()
-        .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
+        .wrap_err("failed to load environment variables (see .env.example for example config)")?;
     let state = server::ServerState::new(env).await?;
 
     sqlx::migrate!().run(&state.db_pool).await?;
@@ -75,7 +75,7 @@ async fn migrate() -> eyre::Result<()> {
 async fn serve(addr: &std::net::SocketAddr, no_migrate: bool) -> eyre::Result<()> {
     let env: ServerEnv = envy::prefixed("BRIOCHE_REGISTRY_")
         .from_env()
-        .wrap_err("failed to loan environment variables (see .env.example for example config)")?;
+        .wrap_err("failed to load environment variables (see .env.example for example config)")?;
     let state = server::ServerState::new(env).await?;
     let state = Arc::new(state);
 
