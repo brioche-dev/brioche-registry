@@ -64,7 +64,7 @@ impl ServerState {
         let object_store_url = match env.object_store_url.scheme() {
             "relative-file" => {
                 let relative_path = env.object_store_url.path();
-                let relative_path = relative_path.strip_prefix("/").unwrap_or(relative_path);
+                let relative_path = relative_path.strip_prefix('/').unwrap_or(relative_path);
                 let abs_path = tokio::fs::canonicalize(std::path::Path::new(relative_path))
                     .await
                     .with_context(|| {
@@ -160,7 +160,7 @@ async fn publish_project_handler(
             .object_store
             .put_opts(
                 &file_path,
-                bytes::Bytes::copy_from_slice(&file_contents),
+                bytes::Bytes::copy_from_slice(file_contents),
                 object_store::PutOptions {
                     mode: object_store::PutMode::Create,
                     ..Default::default()
