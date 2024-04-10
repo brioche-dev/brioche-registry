@@ -1,0 +1,26 @@
+fuse:
+  dir: /litefs
+
+data:
+  dir: /var/lib/litefs
+
+exit-on-error: false
+
+proxy:
+  addr: ":2001"
+  target: "localhost:2000"
+  db: "brioche-registry.db"
+
+exec:
+  - cmd: brioche-registry migrate
+    if-candidate: true
+  - cmd: brioche-registry serve --no-migrate 127.0.0.1:2000
+
+lease:
+  type: consul
+  advertise-url: http://${HOSTNAME}.vm.${FLY_APP_NAME}.internal:20202
+  candidate: ${FLY_REGION == PRIMARY_REGION}
+  promote: true
+  consul:
+    url: "${FLY_CONSUL_URL}"
+    key: "litefs/${FLY_APP_NAME}"

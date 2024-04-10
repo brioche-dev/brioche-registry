@@ -1,0 +1,25 @@
+app = "brioche-registry"
+primary_region = "sea"
+
+[build]
+
+[env]
+LITEFS_CONFIG = "/etc/litefs/litefs-flyio.yml"
+BRIOCHE_REGISTRY_DATABASE_URL = "sqlite:///litefs/brioche-registry.db?mode=rwc"
+
+[mounts]
+source = "litefs"
+destination = "/var/lib/litefs"
+
+[http_service]
+internal_port = 2001
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 0
+processes = ["app"]
+
+[[vm]]
+memory = "1gb"
+cpu_kind = "shared"
+cpus = 1
