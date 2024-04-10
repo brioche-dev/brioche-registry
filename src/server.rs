@@ -30,6 +30,7 @@ pub async fn start_server(
         });
 
     let app = axum::Router::new()
+        .route("/healthcheck", axum::routing::get(healthcheck_handler))
         .route("/projects", axum::routing::post(publish_project_handler))
         .route(
             "/projects/:project_hash",
@@ -103,6 +104,15 @@ impl ServerState {
             argon2::PasswordHash::new(&self.env.password_hash).wrap_err("invalid password hash")?;
         Ok(password_hash)
     }
+}
+
+async fn healthcheck_handler() -> axum::Json<Healthcheck> {
+    axum::Json(Healthcheck { status: "ok" })
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Healthcheck {
+    status: &'static str,
 }
 
 async fn get_project_handler(
