@@ -86,6 +86,8 @@ impl ServerState {
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
         let db_filename = db_opts.clone().get_filename();
         let db_pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .min_connections(1)
+            .max_connections(1)
             .connect_with(db_opts)
             .await?;
 
