@@ -30,17 +30,17 @@ pub async fn start_server(
         });
 
     let app = axum::Router::new()
-        .route("/healthcheck", axum::routing::get(healthcheck_handler))
-        .route("/projects", axum::routing::post(publish_project_handler))
+        .route("/v0/healthcheck", axum::routing::get(healthcheck_handler))
+        .route("/v0/projects", axum::routing::post(publish_project_handler))
         .route(
-            "/projects/:project_hash",
+            "/v0/projects/:project_hash",
             axum::routing::get(get_project_handler),
         )
         .route(
-            "/project-tags/:project_name/:tag",
+            "/v0/project-tags/:project_name/:tag",
             axum::routing::get(get_project_tag_handler),
         )
-        .route("/blobs/:file_id", axum::routing::get(get_blob_handler))
+        .route("/v0/blobs/:file_id", axum::routing::get(get_blob_handler))
         .layer(trace_layer)
         .with_state(state);
 
