@@ -42,14 +42,26 @@ pub async fn start_server(
         )
         .route("/v0/blobs/:file_id", axum::routing::get(get_blob_handler))
         .layer(trace_layer)
-        .with_state(state);
+        .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let listen_addr = listener.local_addr()?;
     tracing::info!("listening on {listen_addr}");
-    axum::serve(listener, app).await?;
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("shutting down");
+    state.handle_shutdown().await;
 
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c()
+        .await
+        .inspect_err(|error| tracing::error!(%error, "failed while awaiting shutdown signal"));
 }
 
 pub struct ServerState {
@@ -105,6 +117,10 @@ impl ServerState {
         let password_hash =
             argon2::PasswordHash::new(&self.env.password_hash).wrap_err("invalid password hash")?;
         Ok(password_hash)
+    }
+
+    async fn handle_shutdown(&self) {
+        self.db_pool.close().await;
     }
 }
 
