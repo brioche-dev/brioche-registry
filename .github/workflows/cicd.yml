@@ -1,0 +1,52 @@
+name: CI/CD
+
+on:
+  - push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  check:
+    name: Run checks
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install SQLx CLI
+        run: |
+          mkdir -p ~/.local/bin
+          curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/sqlx -o ~/.local/bin/sqlx
+          curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/cargo-sqlx -o ~/.local/bin/cargo-sqlx
+          chmod +x ~/.local/bin/sqlx ~/.local/bin/cargo-sqlx
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Check formatting
+        run: cargo fmt -- --check
+      - name: Check database schema
+        run: make check-db-schema
+      - name: Check Clippy
+        run: cargo clippy --all -- -Dwarnings
+  test:
+    name: Run tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run tests
+        run: cargo test
+
+  deploy:
+    name: Deploy
+    if: github.repository == 'brioche-dev/brioche-registry' && github.ref == 'refs/heads/main'
+    needs: [check, test]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
