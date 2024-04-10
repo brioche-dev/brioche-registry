@@ -184,29 +184,32 @@ async fn publish_project_handler(
             .object_store_path
             .child("blobs")
             .child(file_id.to_string());
-        let result = state
-            .object_store
-            .put_opts(
-                &file_path,
-                bytes::Bytes::copy_from_slice(file_contents),
-                object_store::PutOptions {
-                    mode: object_store::PutMode::Create,
-                    ..Default::default()
-                },
-            )
-            .await;
+        let head_result = state.object_store.head(&file_path).await;
 
-        match result {
+        match head_result {
             Ok(_) => {
-                new_files += 1;
-            }
-            Err(object_store::Error::AlreadyExists { .. }) => {
                 // File already uploaded, so ignore
+                continue;
+            }
+            Err(object_store::Error::NotFound { .. }) => {
+                // File does not exist, so upload
             }
             Err(error) => {
-                return Err(ServerError::other(error));
+                return Err(ServerError::other(
+                    eyre::Error::new(error)
+                        .wrap_err("failed to check if project file already exists"),
+                ));
             }
         }
+
+        state
+            .object_store
+            .put(&file_path, bytes::Bytes::copy_from_slice(file_contents))
+            .await
+            .wrap_err("failed to upload new project file")
+            .map_err(ServerError::other)?;
+
+        new_files += 1;
     }
 
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
