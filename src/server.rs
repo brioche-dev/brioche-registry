@@ -4,10 +4,13 @@ use argon2::PasswordVerifier;
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
 use brioche::{
-    artifact::{ArtifactHash, LazyArtifact},
+    artifact::{ArtifactHash, CompleteArtifact, LazyArtifact},
     blob::BlobId,
     project::{Project, ProjectHash, ProjectListing},
-    registry::{GetProjectTagResponse, PublishProjectResponse, UpdatedTag},
+    registry::{
+        CreateResolveRequest, CreateResolveResponse, GetProjectTagResponse, GetResolveResponse,
+        PublishProjectResponse, UpdatedTag,
+    },
 };
 use eyre::{Context as _, OptionExt as _};
 use futures::StreamExt as _;
@@ -50,6 +53,10 @@ pub async fn start_server(
         .route(
             "/v0/artifacts/:artifact_hash",
             axum::routing::get(get_artifact_handler).put(put_artifact_handler),
+        )
+        .route(
+            "/v0/artifacts/:artifact_hash/resolve",
+            axum::routing::get(get_resolve_handler).post(create_resolve_handler),
         )
         .layer(trace_layer)
         .with_state(state.clone());
@@ -558,6 +565,197 @@ async fn put_artifact_handler(
     } else {
         Ok((axum::http::StatusCode::CREATED, axum::Json(artifact_hash)))
     }
+}
+
+async fn get_resolve_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::extract::Path(artifact_hash): axum::extract::Path<ArtifactHash>,
+) -> Result<axum::Json<GetResolveResponse>, ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let artifact_hash_value = artifact_hash.to_string();
+    let record = sqlx::query!(
+        r#"
+            SELECT artifact_hash, artifact_json
+            FROM artifacts
+            INNER JOIN resolves
+                ON resolves.output_hash = artifacts.artifact_hash
+            WHERE resolves.input_hash = ? AND resolves.is_canonical
+        "#,
+        artifact_hash_value,
+    )
+    .fetch_optional(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
+
+    let Some(record) = record else {
+        return Err(ServerError::NotFound);
+    };
+
+    let output_artifact: CompleteArtifact = serde_json::from_str(&record.artifact_json)
+        .wrap_err_with(|| format!("failed to deserialize artifact JSON with hash {artifact_hash}"))
+        .map_err(ServerError::other)?;
+    let record_artifact_hash: Result<ArtifactHash, _> = record.artifact_hash.parse();
+    let record_artifact_hash = record_artifact_hash
+        .map_err(|error| eyre::eyre!(error))
+        .wrap_err_with(|| format!("failed to parse artifact hash {}", record.artifact_hash))
+        .map_err(ServerError::other)?;
+
+    if output_artifact.hash() != record_artifact_hash {
+        return Err(ServerError::Other(eyre::eyre!(
+            "artifact hash {} did not match expected hash {record_artifact_hash}",
+            output_artifact.hash(),
+        )));
+    }
+
+    let response = GetResolveResponse {
+        output_hash: output_artifact.hash(),
+        output_artifact,
+    };
+    Ok(axum::Json(response))
+}
+
+async fn create_resolve_handler(
+    Authenticated(state): Authenticated,
+    axum::extract::Path(input_hash): axum::extract::Path<ArtifactHash>,
+    axum::Json(request): axum::Json<CreateResolveRequest>,
+) -> Result<(axum::http::StatusCode, axum::Json<CreateResolveResponse>), ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let input_hash_value = input_hash.to_string();
+    let input_result = sqlx::query!(
+        r#"
+            SELECT artifact_json
+            FROM artifacts
+            WHERE artifact_hash = ?
+        "#,
+        input_hash_value,
+    )
+    .fetch_optional(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    let Some(input_result) = input_result else {
+        return Err(ServerError::NotFound);
+    };
+
+    let input_artifact: LazyArtifact = serde_json::from_str(&input_result.artifact_json)
+        .wrap_err_with(|| {
+            format!("failed to deserialize input artifact JSON with hash {input_hash}")
+        })
+        .map_err(ServerError::other)?;
+    if input_artifact.hash() != input_hash {
+        return Err(ServerError::Other(eyre::eyre!(
+            "artifact hash {} did not match expected hash {input_hash}",
+            input_artifact.hash()
+        )));
+    }
+
+    let output_hash = request.output_hash;
+    let output_hash_value = output_hash.to_string();
+    let output_result = sqlx::query!(
+        r#"
+            SELECT artifact_json
+            FROM artifacts
+            WHERE artifact_hash = ?
+        "#,
+        output_hash_value,
+    )
+    .fetch_optional(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    let Some(output_result) = output_result else {
+        return Err(ServerError::BadRequest(Cow::Owned(format!(
+            "output artifact {output_hash} does not exist"
+        ))));
+    };
+
+    let output_artifact: LazyArtifact = serde_json::from_str(&output_result.artifact_json)
+        .wrap_err_with(|| {
+            format!("failed to deserialize output artifact JSON with hash {output_hash}")
+        })
+        .map_err(ServerError::other)?;
+    let _output_artifact: CompleteArtifact = output_artifact.try_into().map_err(|_| {
+        ServerError::BadRequest(Cow::Owned(format!(
+            "output artifact {output_hash} is not a complete artifact"
+        )))
+    })?;
+
+    let canonical_result = sqlx::query!(
+        r#"
+            SELECT output_hash
+            FROM resolves
+            WHERE input_hash = ? AND is_canonical
+        "#,
+        input_hash_value,
+    )
+    .fetch_optional(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    let (canonical_output_hash, is_new) = match canonical_result {
+        Some(canonical_result) => {
+            let canonical_output_hash: Result<ArtifactHash, _> =
+                canonical_result.output_hash.parse();
+            let canonical_output_hash = canonical_output_hash
+                .map_err(|error| eyre::eyre!(error))
+                .map_err(ServerError::other)?;
+
+            let insert_result = sqlx::query!(
+                r#"
+                    INSERT INTO resolves (input_hash, output_hash, is_canonical)
+                    VALUES (?, ?, FALSE)
+                    ON CONFLICT (input_hash, output_hash) DO NOTHING
+                "#,
+                input_hash_value,
+                output_hash_value,
+            )
+            .execute(&mut *db_transaction)
+            .await
+            .map_err(ServerError::other)?;
+
+            if insert_result.rows_affected() > 0 {
+                tracing::info!(%input_hash, %output_hash, "added resolve (non-canonical)");
+                (canonical_output_hash, true)
+            } else {
+                tracing::info!(%input_hash, %output_hash, "received resolve, but already exists (non-canonical)");
+                (canonical_output_hash, false)
+            }
+        }
+        None => {
+            sqlx::query!(
+                r#"
+                    INSERT INTO resolves (input_hash, output_hash, is_canonical)
+                    VALUES (?, ?, TRUE)
+                "#,
+                input_hash_value,
+                output_hash_value,
+            )
+            .execute(&mut *db_transaction)
+            .await
+            .map_err(ServerError::other)?;
+
+            tracing::info!(%input_hash, %output_hash, "added resolve (canonical)");
+
+            (output_hash, true)
+        }
+    };
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
+
+    let status = if is_new {
+        axum::http::StatusCode::CREATED
+    } else {
+        axum::http::StatusCode::OK
+    };
+    let response = CreateResolveResponse {
+        canonical_output_hash,
+    };
+
+    Ok((status, axum::Json(response)))
 }
 
 struct Authenticated(Arc<ServerState>);
