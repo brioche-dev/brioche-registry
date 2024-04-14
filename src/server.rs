@@ -137,10 +137,10 @@ async fn get_project_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(project_hash): axum::extract::Path<ProjectHash>,
 ) -> Result<axum::Json<Project>, ServerError> {
-    let project_hash_bytes = project_hash.as_slice();
+    let project_hash_value = project_hash.to_string();
     let record = sqlx::query!(
         "SELECT project_json FROM projects WHERE project_hash = ?",
-        project_hash_bytes,
+        project_hash_value,
     )
     .fetch_all(&state.db_pool)
     .await
@@ -166,7 +166,8 @@ async fn get_project_tag_handler(
     .wrap_err("failed to fetch project tags from database")?;
     let record = records.first().ok_or(ServerError::NotFound)?;
 
-    let project_hash = ProjectHash::try_from_slice(&record.project_hash)
+    let project_hash: Result<ProjectHash, _> = record.project_hash.parse();
+    let project_hash = project_hash
         .map_err(|error| eyre::eyre!(error))
         .wrap_err("failed to parse project hash from database")
         .map_err(ServerError::other)?;
@@ -216,11 +217,11 @@ async fn publish_project_handler(
 
     let mut new_projects = 0;
     for (project_hash, project) in &project_listing.projects {
-        let project_hash_bytes = project_hash.as_slice();
+        let project_hash_value = project_hash.to_string();
         let project_json = serde_json::to_string(&project).map_err(ServerError::other)?;
         let result = sqlx::query!(
             "INSERT OR IGNORE INTO projects (project_hash, project_json) VALUES (?, ?)",
-            project_hash_bytes,
+            project_hash_value,
             project_json
         )
         .execute(&mut *db_transaction)
@@ -231,7 +232,7 @@ async fn publish_project_handler(
     }
 
     let root_project_hash = project_listing.root_project;
-    let root_project_hash_bytes = root_project_hash.as_slice();
+    let root_project_hash_value = root_project_hash.to_string();
     let root_project = project_listing
         .projects
         .get(&project_listing.root_project)
@@ -268,7 +269,7 @@ async fn publish_project_handler(
             "#,
             root_project_name,
             tag,
-            root_project_hash_bytes,
+            root_project_hash_value,
         )
         .fetch_all(&mut *db_transaction)
         .await
@@ -287,7 +288,7 @@ async fn publish_project_handler(
             "#,
             root_project_name,
             tag,
-            root_project_hash_bytes,
+            root_project_hash_value,
         )
         .fetch_all(&mut *db_transaction)
         .await
@@ -313,13 +314,17 @@ async fn publish_project_handler(
             .first()
             .ok_or_eyre("failed to get updated project tag")
             .map_err(ServerError::other)?;
-        if record.project_hash.as_slice() != root_project_hash_bytes {
+        let record_project_hash: Result<ProjectHash, _> = record.project_hash.parse();
+        let record_project_hash = record_project_hash
+            .map_err(|error| eyre::eyre!(error))
+            .map_err(ServerError::other)?;
+        if record_project_hash != root_project_hash {
             return Err(ServerError::Other(eyre::eyre!("project tag did not match")));
         }
 
         let previous_hash = update_result
             .first()
-            .and_then(|record| ProjectHash::try_from_slice(&record.project_hash).ok());
+            .and_then(|record| record.project_hash.parse().ok());
 
         for record in inserted_records {
             tags.push(UpdatedTag {
