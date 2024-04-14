@@ -4,9 +4,9 @@ use argon2::PasswordVerifier;
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
 use brioche::{
+    blob::BlobId,
     project::{Project, ProjectHash, ProjectListing},
     registry::{GetProjectTagResponse, PublishProjectResponse, UpdatedTag},
-    vfs::FileId,
 };
 use eyre::{Context as _, OptionExt as _};
 use tracing::Span;
@@ -40,7 +40,7 @@ pub async fn start_server(
             "/v0/project-tags/:project_name/:tag",
             axum::routing::get(get_project_tag_handler),
         )
-        .route("/v0/blobs/:file_id", axum::routing::get(get_blob_handler))
+        .route("/v0/blobs/:blob_id", axum::routing::get(get_blob_handler))
         .layer(trace_layer)
         .with_state(state.clone());
 
@@ -350,13 +350,13 @@ async fn publish_project_handler(
 
 async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(file_id): axum::extract::Path<FileId>,
+    axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
 ) -> Result<axum::response::Response, ServerError> {
-    let file_path = state
+    let blob_path = state
         .object_store_path
         .child("blobs")
-        .child(file_id.to_string());
-    let object = state.object_store.get(&file_path).await;
+        .child(blob_id.to_string());
+    let object = state.object_store.get(&blob_path).await;
     let object = match object {
         Ok(object) => object,
         Err(object_store::Error::NotFound { .. }) => {
