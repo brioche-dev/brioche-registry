@@ -888,6 +888,7 @@ dependencies = [
  "async-trait",
  "axum 0.7.5",
  "axum-extra",
+ "blake3",
  "brioche",
  "bytes",
  "clap",
