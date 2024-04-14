@@ -9,6 +9,8 @@ use brioche::{
     registry::{GetProjectTagResponse, PublishProjectResponse, UpdatedTag},
 };
 use eyre::{Context as _, OptionExt as _};
+use futures::StreamExt as _;
+use tokio::io::AsyncWriteExt as _;
 use tracing::Span;
 
 pub async fn start_server(
@@ -40,7 +42,10 @@ pub async fn start_server(
             "/v0/project-tags/:project_name/:tag",
             axum::routing::get(get_project_tag_handler),
         )
-        .route("/v0/blobs/:blob_id", axum::routing::get(get_blob_handler))
+        .route(
+            "/v0/blobs/:blob_id",
+            axum::routing::get(get_blob_handler).put(put_blob_handler),
+        )
         .layer(trace_layer)
         .with_state(state.clone());
 
@@ -382,6 +387,109 @@ async fn get_blob_handler(
     Ok(response)
 }
 
+async fn put_blob_handler(
+    Authenticated(state): Authenticated,
+    axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
+    body: axum::body::Body,
+) -> Result<(axum::http::StatusCode, axum::Json<BlobId>), ServerError> {
+    let blob_path = state
+        .object_store_path
+        .child("blobs")
+        .child(blob_id.to_string());
+
+    let head = state.object_store.head(&blob_path).await;
+    match head {
+        Ok(_) => {
+            return Err(ServerError::AlreadyExists);
+        }
+        Err(object_store::Error::NotFound { .. }) => {
+            // Object doesn't exist, so we can create it
+        }
+        Err(error) => {
+            return Err(ServerError::other(error));
+        }
+    }
+
+    let mut hasher = blake3::Hasher::new();
+    let (multipart_id, mut object_writer) = state
+        .object_store
+        .put_multipart(&blob_path)
+        .await
+        .map_err(ServerError::other)?;
+
+    let mut body_stream = body.into_data_stream();
+    while let Some(chunk) = body_stream.next().await {
+        let chunk = chunk.wrap_err("failed to read next blob chunk");
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(error) => {
+                state
+                    .object_store
+                    .abort_multipart(&blob_path, &multipart_id)
+                    .await
+                    .inspect_err(|error| {
+                        tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
+                    })
+                    .map_err(ServerError::other)?;
+                return Err(ServerError::other(error));
+            }
+        };
+
+        hasher.update(&chunk);
+
+        let put_result = object_writer
+            .write_all(&chunk)
+            .await
+            .wrap_err("failed to write blob chunk");
+        match put_result {
+            Ok(()) => {}
+            Err(error) => {
+                state
+                    .object_store
+                    .abort_multipart(&blob_path, &multipart_id)
+                    .await
+                    .inspect_err(|error| {
+                        tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
+                    })
+                    .map_err(ServerError::other)?;
+                return Err(ServerError::other(error));
+            }
+        }
+    }
+
+    // TODO: Compare directly
+    let expected_hash_string = blob_id.to_string();
+    let actual_hash = hasher.finalize();
+    let actual_hash_string = actual_hash.to_hex().to_string();
+
+    if expected_hash_string != actual_hash_string {
+        state
+            .object_store
+            .abort_multipart(&blob_path, &multipart_id)
+            .await
+            .inspect_err(|error| {
+                tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
+            })
+            .map_err(ServerError::other)?;
+        return Err(ServerError::BadRequest(Cow::Owned(format!(
+            "blob hash mismatch: expected {}, got {}",
+            expected_hash_string, actual_hash_string
+        ))));
+    }
+
+    object_writer
+        .flush()
+        .await
+        .wrap_err("failed to flush blob writer")
+        .map_err(ServerError::other)?;
+    object_writer
+        .shutdown()
+        .await
+        .wrap_err("failed to shutdown blob writer")?;
+
+    Ok((axum::http::StatusCode::CREATED, axum::Json(blob_id)))
+}
+
 struct Authenticated(Arc<ServerState>);
 
 #[async_trait::async_trait]
@@ -421,6 +529,9 @@ enum ServerError {
     #[error("username or password did not match")]
     InvalidCredentials,
 
+    #[error("resource already exists")]
+    AlreadyExists,
+
     #[error(transparent)]
     TypedHeaderRejection(#[from] axum_extra::typed_header::TypedHeaderRejection),
 }
@@ -443,6 +554,7 @@ impl axum::response::IntoResponse for ServerError {
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
             ServerError::BadRequest(_) => axum::http::StatusCode::BAD_REQUEST,
+            ServerError::AlreadyExists => axum::http::StatusCode::CONFLICT,
             ServerError::NotFound => axum::http::StatusCode::NOT_FOUND,
             ServerError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
             ServerError::TypedHeaderRejection(rejection) => rejection.into_response().status(),
