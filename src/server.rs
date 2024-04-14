@@ -462,12 +462,10 @@ async fn put_blob_handler(
         }
     }
 
-    // TODO: Compare directly
-    let expected_hash_string = blob_id.to_string();
     let actual_hash = hasher.finalize();
-    let actual_hash_string = actual_hash.to_hex().to_string();
+    let actual_blob_id = BlobId::from_blake3(actual_hash);
 
-    if expected_hash_string != actual_hash_string {
+    if blob_id != actual_blob_id {
         state
             .object_store
             .abort_multipart(&blob_path, &multipart_id)
@@ -477,8 +475,7 @@ async fn put_blob_handler(
             })
             .map_err(ServerError::other)?;
         return Err(ServerError::BadRequest(Cow::Owned(format!(
-            "blob hash mismatch: expected {}, got {}",
-            expected_hash_string, actual_hash_string
+            "blob hash mismatch: expected {blob_id}, got {actual_blob_id}"
         ))));
     }
 
