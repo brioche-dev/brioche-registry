@@ -4,6 +4,7 @@ use argon2::PasswordVerifier;
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
 use brioche::{
+    artifact::{ArtifactHash, LazyArtifact},
     blob::BlobId,
     project::{Project, ProjectHash, ProjectListing},
     registry::{GetProjectTagResponse, PublishProjectResponse, UpdatedTag},
@@ -45,6 +46,10 @@ pub async fn start_server(
         .route(
             "/v0/blobs/:blob_id",
             axum::routing::get(get_blob_handler).put(put_blob_handler),
+        )
+        .route(
+            "/v0/artifacts/:artifact_hash",
+            axum::routing::get(get_artifact_handler).put(put_artifact_handler),
         )
         .layer(trace_layer)
         .with_state(state.clone());
@@ -488,6 +493,74 @@ async fn put_blob_handler(
         .wrap_err("failed to shutdown blob writer")?;
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(blob_id)))
+}
+
+async fn get_artifact_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::extract::Path(artifact_hash): axum::extract::Path<ArtifactHash>,
+) -> Result<axum::Json<LazyArtifact>, ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let artifact_hash_value = artifact_hash.to_string();
+    let record = sqlx::query!(
+        "SELECT artifact_json FROM artifacts WHERE artifact_hash = ?",
+        artifact_hash_value,
+    )
+    .fetch_optional(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
+
+    match record {
+        Some(record) => {
+            let artifact: LazyArtifact = serde_json::from_str(&record.artifact_json)
+                .wrap_err_with(|| {
+                    format!("failed to deserialize artifact JSON with hash {artifact_hash}")
+                })
+                .map_err(ServerError::other)?;
+            Ok(axum::Json(artifact))
+        }
+        None => Err(ServerError::NotFound),
+    }
+}
+
+async fn put_artifact_handler(
+    Authenticated(state): Authenticated,
+    axum::extract::Path(artifact_hash): axum::extract::Path<ArtifactHash>,
+    axum::Json(artifact): axum::Json<LazyArtifact>,
+) -> Result<(axum::http::StatusCode, axum::Json<ArtifactHash>), ServerError> {
+    if artifact_hash != artifact.hash() {
+        return Err(ServerError::BadRequest(Cow::Owned(format!(
+            "expected artifact hash to be {artifact_hash}, but was {}",
+            artifact.hash()
+        ))));
+    }
+
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let artifact_hash_value = artifact_hash.to_string();
+    let artifact_json_value = serde_json::to_string(&artifact).map_err(ServerError::other)?;
+    let result = sqlx::query!(
+        r#"
+            INSERT INTO artifacts (artifact_hash, artifact_json)
+            VALUES (?, ?)
+            ON CONFLICT (artifact_hash) DO NOTHING
+        "#,
+        artifact_hash_value,
+        artifact_json_value,
+    )
+    .execute(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
+
+    if result.rows_affected() == 0 {
+        Ok((axum::http::StatusCode::OK, axum::Json(artifact_hash)))
+    } else {
+        Ok((axum::http::StatusCode::CREATED, axum::Json(artifact_hash)))
+    }
 }
 
 struct Authenticated(Arc<ServerState>);
