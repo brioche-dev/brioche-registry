@@ -27,9 +27,21 @@ async fn main() -> eyre::Result<()> {
         Err(error) => eyre::bail!(error),
     }
 
+    let mut fmt_layer = None;
+    let mut json_layer = None;
+    match std::env::var("LOG_FORMAT").as_deref() {
+        Ok("json") => {
+            json_layer = Some(tracing_subscriber::fmt::layer().json());
+        }
+        _ => {
+            fmt_layer = Some(tracing_subscriber::fmt::layer());
+        }
+    }
+
     color_eyre::install()?;
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(fmt_layer)
+        .with(json_layer)
         .with(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive("brioche_registry=info".parse().expect("invalid filter"))
