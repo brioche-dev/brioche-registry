@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    INSERT INTO resolves (input_hash, output_hash, is_canonical)\n                    VALUES (?, ?, FALSE)\n                    ON CONFLICT (input_hash, output_hash) DO NOTHING\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6de903c1422f23c6081f6917c23f4900c76359102eb3213f999fae91fae1d9b5"
+}
