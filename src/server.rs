@@ -22,6 +22,8 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
     let proxy_layers = state.proxy_layers;
     let trace_layer = tower_http::trace::TraceLayer::new_for_http()
         .make_span_with(move |req: &axum::http::Request<Body>| {
+            let request_id = ulid::Ulid::new();
+
             let connect_info = req
                 .extensions()
                 .get::<axum::extract::ConnectInfo<SocketAddr>>();
@@ -39,7 +41,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
                 .last()
                 .unwrap_or(Cow::Borrowed("<unknown>"));
 
-            tracing::info_span!("request", method = %req.method(), path = %req.uri().path(), %client_ip)
+            tracing::info_span!("request", method = %req.method(), path = %req.uri().path(), %client_ip, %request_id)
         })
         .on_request(|_req: &axum::http::Request<Body>, _span: &Span| {
             tracing::info!("received request")

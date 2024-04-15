@@ -38,4 +38,5 @@ tokio-util = { version = "0.7.10", features = ["io"] }
 tower-http = { version = "0.5.2", features = ["trace"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+ulid = "1.1.2"
 url = { version = "2.5.0", features = ["serde"] }
