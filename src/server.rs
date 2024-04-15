@@ -1,4 +1,4 @@
-use std::{borrow::Cow, str::FromStr as _, sync::Arc, time::Duration};
+use std::{borrow::Cow, net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration};
 
 use argon2::PasswordVerifier;
 use axum::body::Body;
@@ -12,28 +12,54 @@ use brioche::{
         PublishProjectResponse, UpdatedTag,
     },
 };
+use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
 use futures::StreamExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tracing::Span;
 
-pub async fn start_server(
-    state: Arc<ServerState>,
-    addr: &std::net::SocketAddr,
-) -> eyre::Result<()> {
+pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::Result<()> {
+    let proxy_layers = state.proxy_layers;
     let trace_layer = tower_http::trace::TraceLayer::new_for_http()
-        .make_span_with(|_req: &axum::http::Request<Body>| {
-            tracing::info_span!("request")
+        .make_span_with(move |req: &axum::http::Request<Body>| {
+            let connect_info = req
+                .extensions()
+                .get::<axum::extract::ConnectInfo<SocketAddr>>();
+            let received_ip = connect_info.map(|connect_info| connect_info.0.ip().to_string());
+            let received_ip = received_ip.as_deref().unwrap_or("<unknown>");
+            let forwarded_for = req
+                .headers()
+                .get_all("X-Forwarded-For")
+                .into_iter()
+                .flat_map(|forwarded_for| forwarded_for.as_bytes().split_str(","))
+                .map(|forwarded_for| String::from_utf8_lossy(forwarded_for.trim()));
+            let client_ips = [Cow::Borrowed(received_ip)].into_iter().chain(forwarded_for);
+            let client_ip = client_ips
+                .take(proxy_layers + 1)
+                .last()
+                .unwrap_or(Cow::Borrowed("<unknown>"));
+
+            tracing::info_span!("request", method = %req.method(), path = %req.uri().path(), %client_ip)
         })
-        .on_request(|req: &axum::http::Request<Body>, _span: &Span| {
-            tracing::info!(method = %req.method(), path = %req.uri().path(), "received request")
+        .on_request(|_req: &axum::http::Request<Body>, _span: &Span| {
+            tracing::info!("received request")
         })
-        .on_response(|res: &axum::http::Response<Body>, latency: Duration, _span: &Span| {
-            tracing::info!(status = res.status().as_u16(), latency = latency.as_secs_f32(), "response")
-        })
-        .on_failure(|err: tower_http::classify::ServerErrorsFailureClass, latency: Duration, _span: &Span| {
-            tracing::error!(error = %err, latency = latency.as_secs_f32(), "request failed")
-        });
+        .on_response(
+            |res: &axum::http::Response<Body>, latency: Duration, _span: &Span| {
+                tracing::info!(
+                    status = res.status().as_u16(),
+                    latency = latency.as_secs_f32(),
+                    "response"
+                )
+            },
+        )
+        .on_failure(
+            |err: tower_http::classify::ServerErrorsFailureClass,
+             latency: Duration,
+             _span: &Span| {
+                tracing::error!(error = %err, latency = latency.as_secs_f32(), "request failed")
+            },
+        );
 
     let app = axum::Router::new()
         .route("/v0/healthcheck", axum::routing::get(healthcheck_handler))
@@ -60,6 +86,7 @@ pub async fn start_server(
         )
         .layer(trace_layer)
         .with_state(state.clone());
+    let app = app.into_make_service_with_connect_info::<SocketAddr>();
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let listen_addr = listener.local_addr()?;
@@ -83,6 +110,7 @@ async fn shutdown_signal() {
 
 pub struct ServerState {
     env: super::ServerEnv,
+    proxy_layers: usize,
     object_store: Box<dyn object_store::ObjectStore>,
     object_store_path: object_store::path::Path,
     pub db_pool: sqlx::SqlitePool,
@@ -120,10 +148,13 @@ impl ServerState {
             .connect_with(db_opts)
             .await?;
 
+        let proxy_layers = env.proxy_layers.unwrap_or(0);
+
         tracing::info!(db_filename = %db_filename.display(), "set up database connection");
 
         Ok(Self {
             env,
+            proxy_layers,
             object_store,
             object_store_path,
             db_pool,
