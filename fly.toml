@@ -6,6 +6,7 @@ primary_region = "sea"
 [env]
 LITEFS_CONFIG = "/etc/litefs/litefs-flyio.yml"
 BRIOCHE_REGISTRY_DATABASE_URL = "sqlite:///litefs/brioche-registry.db?mode=rwc"
+BRIOCHE_REGISTRY_PROXY_LAYERS = "1"
 LOG_FORMAT = "json"
 
 [mounts]
