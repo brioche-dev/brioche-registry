@@ -1,4 +1,7 @@
-use std::{borrow::Cow, net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration};
+use std::{
+    borrow::Cow, collections::HashSet, net::SocketAddr, str::FromStr as _, sync::Arc,
+    time::Duration,
+};
 
 use argon2::PasswordVerifier;
 use axum::body::Body;
@@ -14,7 +17,9 @@ use brioche::{
 };
 use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
-use futures::StreamExt as _;
+use futures::{StreamExt as _, TryStreamExt};
+use joinery::JoinableIterator as _;
+use sqlx::Arguments as _;
 use tokio::io::AsyncWriteExt as _;
 use tracing::Span;
 
@@ -87,6 +92,15 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         .route(
             "/v0/artifacts/:artifact_hash/resolve",
             axum::routing::get(get_resolve_handler).post(create_resolve_handler),
+        )
+        .route(
+            "/v0/known-artifacts",
+            axum::routing::post(known_artifacts_handler),
+        )
+        .route("/v0/known-blobs", axum::routing::post(known_blobs_handler))
+        .route(
+            "/v0/known-resolves",
+            axum::routing::post(known_resolves_handler),
         )
         .layer(trace_layer)
         .with_state(state.clone());
@@ -632,6 +646,130 @@ async fn put_artifact_handler(
     } else {
         Ok((axum::http::StatusCode::CREATED, axum::Json(artifact_hash)))
     }
+}
+
+async fn known_artifacts_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::Json(artifact_hashes): axum::Json<HashSet<ArtifactHash>>,
+) -> Result<axum::Json<HashSet<ArtifactHash>>, ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    for hash in &artifact_hashes {
+        arguments.add(hash.to_string());
+    }
+
+    let placeholders = std::iter::repeat("?")
+        .take(artifact_hashes.len())
+        .join_with(", ");
+
+    let rows = sqlx::query_as_with::<_, (String,), _>(
+        &format!(
+            r#"
+            SELECT artifact_hash
+            FROM artifacts
+            WHERE artifact_hash IN ({placeholders})
+        "#,
+        ),
+        arguments,
+    )
+    .fetch_all(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    let results = rows
+        .into_iter()
+        .map(|row| row.0.parse())
+        .collect::<Result<HashSet<ArtifactHash>, _>>()
+        .map_err(|error| eyre::eyre!(error))
+        .map_err(ServerError::other)?;
+    Ok(axum::Json(results))
+}
+
+async fn known_blobs_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::Json(blob_ids): axum::Json<HashSet<BlobId>>,
+) -> Result<axum::Json<HashSet<BlobId>>, ServerError> {
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
+
+    let collect_task = tokio::task::spawn(async move {
+        tokio_stream::wrappers::ReceiverStream::new(rx)
+            .collect::<HashSet<BlobId>>()
+            .await
+    });
+
+    futures::stream::iter(blob_ids)
+        .map(Ok)
+        .try_for_each_concurrent(Some(100), |blob_id| {
+            let state = state.clone();
+            let tx = tx.clone();
+            async move {
+                let blob_path = state
+                    .object_store_path
+                    .child("blobs")
+                    .child(blob_id.to_string());
+                let head = state.object_store.head(&blob_path).await;
+                match head {
+                    Ok(_) => {
+                        tx.send(blob_id).await.map_err(ServerError::other)?;
+                        Ok(())
+                    }
+                    Err(object_store::Error::NotFound { .. }) => Ok(()),
+                    Err(error) => Err(ServerError::other(error)),
+                }
+            }
+        })
+        .await?;
+
+    // Drop the sender so the receiving side can finish
+    drop(tx);
+
+    let result = collect_task.await.map_err(ServerError::other)?;
+    Ok(axum::Json(result))
+}
+
+async fn known_resolves_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::Json(artifact_hashes): axum::Json<HashSet<(ArtifactHash, ArtifactHash)>>,
+) -> Result<axum::Json<HashSet<(ArtifactHash, ArtifactHash)>>, ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    for (input_hash, output_hash) in &artifact_hashes {
+        arguments.add(input_hash.to_string());
+        arguments.add(output_hash.to_string());
+    }
+
+    let placeholders = std::iter::repeat("(?, ?)")
+        .take(artifact_hashes.len())
+        .join_with(", ");
+
+    let rows = sqlx::query_as_with::<_, (String, String), _>(
+        &format!(
+            r#"
+            SELECT input_hash, output_hash
+            FROM resolves
+            WHERE (input_hash, output_hash ) IN (VALUES {placeholders})
+        "#,
+        ),
+        arguments,
+    )
+    .fetch_all(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    let results = rows
+        .into_iter()
+        .map(|row| {
+            let input_hash: Result<ArtifactHash, _> = row.0.parse();
+            let input_hash = input_hash.map_err(|error| eyre::eyre!(error))?;
+            let output_hash: Result<ArtifactHash, _> = row.1.parse();
+            let output_hash = output_hash.map_err(|error| eyre::eyre!(error))?;
+            eyre::Ok((input_hash, output_hash))
+        })
+        .collect::<Result<HashSet<(ArtifactHash, ArtifactHash)>, _>>()
+        .map_err(ServerError::other)?;
+    Ok(axum::Json(results))
 }
 
 async fn get_resolve_handler(
