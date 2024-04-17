@@ -76,7 +76,9 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         )
         .route(
             "/v0/blobs/:blob_id",
-            axum::routing::get(get_blob_handler).put(put_blob_handler),
+            axum::routing::get(get_blob_handler)
+                .head(head_blob_handler)
+                .put(put_blob_handler),
         )
         .route(
             "/v0/artifacts/:artifact_hash",
@@ -396,6 +398,38 @@ async fn publish_project_handler(
         tags,
     };
     Ok((axum::http::StatusCode::CREATED, axum::Json(response)))
+}
+
+async fn head_blob_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
+) -> Result<axum::response::Response, ServerError> {
+    let blob_path = state
+        .object_store_path
+        .child("blobs")
+        .child(blob_id.to_string());
+    let object = state.object_store.head(&blob_path).await;
+    let body = match object {
+        Ok(_) => {
+            // Build an empty body from a stream. Unlike `Body::empty()`, this
+            // ensures that the `Content-Length` header is not set.
+            const EMPTY: [Result<axum::body::Bytes, ServerError>; 0] = [];
+            Body::from_stream(futures::stream::iter(EMPTY))
+        }
+        Err(object_store::Error::NotFound { .. }) => {
+            return Err(ServerError::NotFound);
+        }
+        Err(error) => {
+            return Err(ServerError::other(error));
+        }
+    };
+
+    let response = axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
+        .header(axum::http::header::TRANSFER_ENCODING, "chunked")
+        .body(body)
+        .map_err(ServerError::other)?;
+    Ok(response)
 }
 
 async fn get_blob_handler(
