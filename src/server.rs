@@ -1,5 +1,9 @@
 use std::{
-    borrow::Cow, collections::HashSet, net::SocketAddr, str::FromStr as _, sync::Arc,
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    str::FromStr as _,
+    sync::Arc,
     time::Duration,
 };
 
@@ -92,6 +96,10 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         .route(
             "/v0/artifacts/:artifact_hash/resolve",
             axum::routing::get(get_resolve_handler).post(create_resolve_handler),
+        )
+        .route(
+            "/v0/artifacts",
+            axum::routing::post(bulk_create_artifacts_handler),
         )
         .route(
             "/v0/known-artifacts",
@@ -743,6 +751,59 @@ async fn put_artifact_handler(
     } else {
         Ok((axum::http::StatusCode::CREATED, axum::Json(artifact_hash)))
     }
+}
+
+async fn bulk_create_artifacts_handler(
+    Authenticated(state): Authenticated,
+    axum::Json(artifacts): axum::Json<HashMap<ArtifactHash, LazyArtifact>>,
+) -> Result<(axum::http::StatusCode, axum::Json<usize>), ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    for (artifact_hash, artifact) in &artifacts {
+        if *artifact_hash != artifact.hash() {
+            return Err(ServerError::BadRequest(Cow::Owned(format!(
+                "expected artifact hash to be {artifact_hash}, but was {}",
+                artifact.hash()
+            ))));
+        }
+
+        let artifact_json = serde_json::to_string(artifact).map_err(ServerError::other)?;
+
+        arguments.add(artifact_hash.to_string());
+        arguments.add(artifact_json);
+    }
+
+    let placeholders = std::iter::repeat("(?, ?)")
+        .take(artifacts.len())
+        .join_with(", ");
+
+    let result = sqlx::query_with(
+        &format!(
+            r#"
+                INSERT INTO artifacts (artifact_hash, artifact_json)
+                VALUES {placeholders}
+            "#,
+        ),
+        arguments,
+    )
+    .execute(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
+
+    let new_rows: usize = result
+        .rows_affected()
+        .try_into()
+        .map_err(ServerError::other)?;
+    if new_rows != artifacts.len() {
+        return Err(ServerError::other(eyre::eyre!(
+            "failed to insert all artifacts",
+        )));
+    }
+
+    Ok((axum::http::StatusCode::CREATED, axum::Json(new_rows)))
 }
 
 async fn known_artifacts_handler(
