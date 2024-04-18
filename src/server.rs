@@ -17,10 +17,10 @@ use brioche::{
 };
 use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
-use futures::{StreamExt as _, TryStreamExt};
+use futures::{StreamExt as _, TryStreamExt as _};
 use joinery::JoinableIterator as _;
 use sqlx::Arguments as _;
-use tokio::io::AsyncWriteExt as _;
+use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
 use tracing::Span;
 
 pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::Result<()> {
@@ -490,6 +490,8 @@ async fn put_blob_handler(
         .child("blobs")
         .child(blob_id.to_string());
 
+    // Return an error if the blob doesn't exist
+
     let head = state.object_store.head(&blob_path).await;
     match head {
         Ok(_) => {
@@ -503,56 +505,149 @@ async fn put_blob_handler(
         }
     }
 
-    let mut hasher = blake3::Hasher::new();
+    // Start a multipart upload to the object store. We do this so we can
+    // hash the blob while we upload it, then cancel the upload if we discover
+    // the hash doesn't match.
+    // NOTE: Past this point, we shouldn't return early before calling
+    // `abort_multipart` for the object (to abort the upload) or calling
+    // `finalize` on the writer (to finish the upload).
+
     let (multipart_id, mut object_writer) = state
         .object_store
         .put_multipart(&blob_path)
         .await
         .map_err(ServerError::other)?;
 
+    let (hasher_tx, mut hasher_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(10);
+    let (uploader_tx, uploader_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(10);
+
+    // Create a task that hashes each chunk of the blob as we receive it
+    let hasher_task = tokio::task::spawn_blocking(move || {
+        let mut hasher = blake3::Hasher::new();
+        while let Some(bytes) = hasher_rx.blocking_recv() {
+            hasher.update(&bytes[..]);
+        }
+
+        hasher.finalize()
+    });
+
+    // Create a task to upload each chunk of the blob
+    let uploader_task = tokio::spawn(async move {
+        // Create a buffered reader from the bytes from the receiver. We use
+        // a size of 1MB because each buffered chunk should get uploaded as a
+        // separate `PUT` request.
+        let uploader_stream =
+            tokio_stream::wrappers::ReceiverStream::new(uploader_rx).map(Ok::<_, std::io::Error>);
+        let uploader_reader = tokio_util::io::StreamReader::new(uploader_stream);
+        let mut uploader_reader = tokio::io::BufReader::with_capacity(1024 * 1024, uploader_reader);
+
+        loop {
+            // Read a chunk from the receiver, up to the buffer size
+            let chunk = uploader_reader.fill_buf().await?;
+            let chunk_len = chunk.len();
+
+            // A length of 0 means we've reached the end
+            if chunk_len == 0 {
+                break;
+            }
+
+            // Write the buffered chunk
+            object_writer
+                .write_all(chunk)
+                .await
+                .wrap_err("failed to write blob chunk")?;
+
+            // Consume the bytes we just read from the buffered reader
+            uploader_reader.consume(chunk_len);
+        }
+
+        eyre::Ok(object_writer)
+    });
+
     let mut body_stream = body.into_data_stream();
-    while let Some(chunk) = body_stream.next().await {
-        let chunk = chunk.wrap_err("failed to read next blob chunk");
-        let chunk = match chunk {
-            Ok(chunk) => chunk,
+    let result = loop {
+        let Some(bytes) = body_stream.next().await else {
+            break Ok(());
+        };
+
+        let bytes = match bytes {
+            Ok(bytes) => bytes,
             Err(error) => {
-                state
-                    .object_store
-                    .abort_multipart(&blob_path, &multipart_id)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
-                    })
-                    .map_err(ServerError::other)?;
-                return Err(ServerError::other(error));
+                break Err(ServerError::other(error));
             }
         };
 
-        hasher.update(&chunk);
+        // Send the bytes to both the hasher and the uploader tasks
 
-        let put_result = object_writer
-            .write_all(&chunk)
-            .await
-            .wrap_err("failed to write blob chunk");
-        match put_result {
+        match hasher_tx.send(bytes.clone()).await {
             Ok(()) => {}
             Err(error) => {
-                state
-                    .object_store
-                    .abort_multipart(&blob_path, &multipart_id)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
-                    })
-                    .map_err(ServerError::other)?;
-                return Err(ServerError::other(error));
+                break Err(ServerError::other(error));
+            }
+        };
+        match uploader_tx.send(bytes).await {
+            Ok(()) => {}
+            Err(error) => {
+                break Err(ServerError::other(error));
             }
         }
+    };
+
+    // Close the channels by dropping them
+    drop(hasher_tx);
+    drop(uploader_tx);
+
+    // Abort the multipart upload if we encountered an error reading from
+    // the body
+    if let Err(error) = result {
+        let _ = state
+            .object_store
+            .abort_multipart(&blob_path, &multipart_id)
+            .await
+            .inspect_err(|error| {
+                tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
+            });
+        return Err(error);
     }
 
-    let actual_hash = hasher.finalize();
-    let actual_blob_id = BlobId::from_blake3(actual_hash);
+    // Wait for the hasher to finish (aborting the mutlipart upload if it failed)
+    let actual_hash = match hasher_task.await {
+        Ok(hash) => hash,
+        Err(error) => {
+            let _ = state
+                .object_store
+                .abort_multipart(&blob_path, &multipart_id)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
+                });
+            return Err(ServerError::other(error));
+        }
+    };
 
+    // Wait for the uploader task to finish (aborting the multipart upload
+    // if it fails). If it succeeds, we get the object writer back so we can
+    // flush it.
+    let uploader_task_result = uploader_task
+        .await
+        .map_err(eyre::Error::from)
+        .and_then(|result| result);
+    let mut object_writer = match uploader_task_result {
+        Ok(object_writer) => object_writer,
+        Err(error) => {
+            let _ = state
+                .object_store
+                .abort_multipart(&blob_path, &multipart_id)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
+                });
+            return Err(ServerError::other(error));
+        }
+    };
+
+    // Validate the hash of the blob matches the request
+    let actual_blob_id = BlobId::from_blake3(actual_hash);
     if blob_id != actual_blob_id {
         state
             .object_store
@@ -567,6 +662,8 @@ async fn put_blob_handler(
         ))));
     }
 
+    // Flush the stream and shutdown the writer to ensure we finish the
+    // multipart upload
     object_writer
         .flush()
         .await
