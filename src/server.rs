@@ -498,7 +498,7 @@ async fn put_blob_handler(
         .child("blobs")
         .child(blob_id.to_string());
 
-    // Return an error if the blob doesn't exist
+    // Return an error if the blob already exists
 
     let head = state.object_store.head(&blob_path).await;
     match head {
