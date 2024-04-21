@@ -12,7 +12,7 @@ use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
 use brioche::{
     artifact::{ArtifactHash, CompleteArtifact, LazyArtifact},
-    blob::BlobId,
+    blob::BlobHash,
     project::{Project, ProjectHash, ProjectListing},
     registry::{
         CreateResolveRequest, CreateResolveResponse, GetProjectTagResponse, GetResolveResponse,
@@ -83,7 +83,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             axum::routing::get(get_project_tag_handler),
         )
         .route(
-            "/v0/blobs/:blob_id",
+            "/v0/blobs/:blob_hash",
             axum::routing::get(get_blob_handler).put(put_blob_handler),
         )
         .route(
@@ -244,7 +244,7 @@ async fn publish_project_handler(
             futures::stream::once(async { eyre::Ok(bytes::Bytes::copy_from_slice(file_contents)) });
 
         let expected_hash = file_id
-            .as_blob_id()
+            .as_blob_hash()
             .map_err(|error| eyre::eyre!(error))
             .map_err(ServerError::other)?
             .to_blake3();
@@ -393,9 +393,9 @@ async fn publish_project_handler(
 
 async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
+    axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
 ) -> Result<axum::response::Response, ServerError> {
-    let blob_key = format!("blobs/{blob_id}");
+    let blob_key = format!("blobs/{blob_hash}");
     let response = state
         .object_store
         .try_get_as_http_response(&blob_key)
@@ -406,10 +406,10 @@ async fn get_blob_handler(
 
 async fn put_blob_handler(
     Authenticated(state): Authenticated,
-    axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
+    axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
     body: axum::body::Body,
-) -> Result<(axum::http::StatusCode, axum::Json<BlobId>), ServerError> {
-    let blob_key = format!("blobs/{blob_id}");
+) -> Result<(axum::http::StatusCode, axum::Json<BlobHash>), ServerError> {
+    let blob_key = format!("blobs/{blob_hash}");
 
     // Return an error if the blob already exists
 
@@ -418,14 +418,14 @@ async fn put_blob_handler(
     }
 
     let body_stream = body.into_data_stream();
-    let expected_hash = blob_id.to_blake3();
+    let expected_hash = blob_hash.to_blake3();
 
     state
         .object_store
         .put_and_validate(&blob_key, body_stream, expected_hash)
         .await?;
 
-    Ok((axum::http::StatusCode::CREATED, axum::Json(blob_id)))
+    Ok((axum::http::StatusCode::CREATED, axum::Json(blob_hash)))
 }
 
 async fn get_artifact_handler(
@@ -589,25 +589,25 @@ async fn known_artifacts_handler(
 
 async fn known_blobs_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::Json(blob_ids): axum::Json<HashSet<BlobId>>,
-) -> Result<axum::Json<HashSet<BlobId>>, ServerError> {
+    axum::Json(blob_hashes): axum::Json<HashSet<BlobHash>>,
+) -> Result<axum::Json<HashSet<BlobHash>>, ServerError> {
     let (tx, rx) = tokio::sync::mpsc::channel(100);
 
     let collect_task = tokio::task::spawn(async move {
         tokio_stream::wrappers::ReceiverStream::new(rx)
-            .collect::<HashSet<BlobId>>()
+            .collect::<HashSet<BlobHash>>()
             .await
     });
 
-    futures::stream::iter(blob_ids)
+    futures::stream::iter(blob_hashes)
         .map(Ok)
-        .try_for_each_concurrent(Some(100), |blob_id| {
+        .try_for_each_concurrent(Some(100), |blob_hash| {
             let state = state.clone();
             let tx = tx.clone();
             async move {
-                let blob_key = format!("blobs/{blob_id}");
+                let blob_key = format!("blobs/{blob_hash}");
                 if state.object_store.exists(&blob_key).await? {
-                    tx.send(blob_id).await.map_err(ServerError::other)?;
+                    tx.send(blob_hash).await.map_err(ServerError::other)?;
                 }
 
                 Ok::<_, ServerError>(())
