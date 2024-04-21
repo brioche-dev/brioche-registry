@@ -388,11 +388,7 @@ async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
 ) -> Result<axum::response::Response, ServerError> {
-    let blob_key = format!("blobs/{blob_hash}");
-    let response = state
-        .object_store
-        .try_get_as_http_response(&blob_key)
-        .await?;
+    let response = crate::blob::try_get_as_http_response(&state, blob_hash).await?;
     let response = response.ok_or_else(|| ServerError::NotFound)?;
     Ok(response)
 }

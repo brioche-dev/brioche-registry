@@ -3,8 +3,34 @@ use eyre::WrapErr as _;
 
 use crate::server::{ServerError, ServerState};
 
+/// The key used to store a blob in the object store.
+///
+/// Currently, this key is `blobs/{hash[0..4]}/{hash[4..]}`. This
+/// structure might be overkill, but there are some good reasons for it:
+///
+/// - AWS S3 rate limits are based on the object prefix, so breaking up
+///   blobs into more prefixes should lead to higher potential throughput.
+/// - Some filesystems have performance issues around directories with
+///   lots of files in a flat structure, so using multiple subdirectories
+///   can help with that. Git puts blobs into directories named by the first
+///   2 digits of their hashes, for example.
+/// - This is a hard thing to change, so it's better to try something that
+///   could stand up longer-term.
 fn blob_key(blob_hash: BlobHash) -> String {
-    format!("blobs/{blob_hash}")
+    let blob_hash_key = blob_hash.to_string();
+    let (prefix, suffix) = blob_hash_key.split_at(4);
+    format!("blobs/{prefix}/{suffix}")
+}
+
+pub async fn try_get_as_http_response(
+    state: &ServerState,
+    blob_hash: BlobHash,
+) -> eyre::Result<Option<axum::response::Response>> {
+    let response = state
+        .object_store
+        .try_get_as_http_response(&blob_key(blob_hash))
+        .await?;
+    Ok(response)
 }
 
 pub async fn blob_exists(state: &ServerState, blob_hash: BlobHash) -> Result<bool, ServerError> {
