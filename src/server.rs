@@ -237,14 +237,23 @@ async fn publish_project_handler(
         })?;
 
         // Skip blob if it already exists
-        if crate::blob::blob_exists(&state, blob_hash).await? {
+        let blob_exists =
+            crate::blob::blob_exists(&state, blob_hash, crate::blob::CompressionScheme::Zstd)
+                .await?;
+        if blob_exists {
             continue;
         }
 
         let file_contents_stream =
             futures::stream::once(async { eyre::Ok(bytes::Bytes::copy_from_slice(file_contents)) });
 
-        crate::blob::upload_blob(&state, blob_hash, file_contents_stream).await?;
+        crate::blob::upload_blob(
+            &state,
+            blob_hash,
+            crate::blob::CompressionScheme::Zstd,
+            file_contents_stream,
+        )
+        .await?;
 
         new_files += 1;
     }
@@ -386,9 +395,23 @@ async fn publish_project_handler(
 
 async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
+    axum::extract::Path(blob_hash_with_extension): axum::extract::Path<String>,
 ) -> Result<axum::response::Response, ServerError> {
-    let response = crate::blob::try_get_as_http_response(&state, blob_hash).await?;
+    let (blob_hash, compression) = match blob_hash_with_extension.rsplit_once('.') {
+        Some((blob_hash, "zst")) => {
+            let blob_hash: BlobHash = blob_hash.parse().map_err(|error| {
+                ServerError::BadRequest(Cow::Owned(format!("invalid blob hash: {error}")))
+            })?;
+            (blob_hash, crate::blob::CompressionScheme::Zstd)
+        }
+        _ => {
+            return Err(ServerError::BadRequest(Cow::Borrowed(
+                "must fetch blob with an extension (such as /v0/blobs/000000.zst)",
+            )))
+        }
+    };
+
+    let response = crate::blob::try_get_as_http_response(&state, blob_hash, compression).await?;
     let response = response.ok_or_else(|| ServerError::NotFound)?;
     Ok(response)
 }
@@ -399,11 +422,19 @@ async fn put_blob_handler(
     body: axum::body::Body,
 ) -> Result<(axum::http::StatusCode, axum::Json<BlobHash>), ServerError> {
     // Return an error if the blob already exists
-    if crate::blob::blob_exists(&state, blob_hash).await? {
+    let blob_exists =
+        crate::blob::blob_exists(&state, blob_hash, crate::blob::CompressionScheme::Zstd).await?;
+    if blob_exists {
         return Err(ServerError::AlreadyExists);
     }
 
-    crate::blob::upload_blob(&state, blob_hash, body.into_data_stream()).await?;
+    crate::blob::upload_blob(
+        &state,
+        blob_hash,
+        crate::blob::CompressionScheme::Zstd,
+        body.into_data_stream(),
+    )
+    .await?;
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(blob_hash)))
 }

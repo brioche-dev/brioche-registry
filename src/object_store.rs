@@ -111,11 +111,10 @@ impl ObjectStore {
         }
     }
 
-    pub async fn put_and_validate<E>(
+    pub async fn put<E>(
         &self,
         key: &str,
         input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
-        expected_hash: blake3::Hash,
     ) -> eyre::Result<usize>
     where
         eyre::Error: From<E>,
@@ -133,12 +132,10 @@ impl ObjectStore {
 
                 let upload_size = match upload_type {
                     S3UploadType::Single(bytes) => {
-                        upload_s3_single_part(client, bucket, &object_key, bytes, expected_hash)
-                            .await?
+                        upload_s3_single_part(client, bucket, &object_key, bytes).await?
                     }
                     S3UploadType::Multipart(stream) => {
-                        upload_s3_multipart(client, bucket, &object_key, stream, expected_hash)
-                            .await?
+                        upload_s3_multipart(client, bucket, &object_key, stream).await?
                     }
                 };
 
@@ -161,7 +158,7 @@ impl ObjectStore {
 
                 let buf_writer = std::pin::pin!(&mut buf_writer);
 
-                let result = write_file_and_validate_hash(buf_writer, input, expected_hash).await;
+                let result = write_file(buf_writer, input).await;
 
                 match result {
                     Ok(upload_size) => {
@@ -185,22 +182,19 @@ impl ObjectStore {
     }
 }
 
-pub async fn write_file_and_validate_hash<W, E>(
+pub async fn write_file<W, E>(
     mut writer: std::pin::Pin<&mut W>,
     input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
-    expected_hash: blake3::Hash,
 ) -> eyre::Result<usize>
 where
     W: tokio::io::AsyncWrite + Send,
     eyre::Error: From<E>,
 {
     let mut upload_size = 0;
-    let mut hasher = blake3::Hasher::new();
 
-    // Hash and write each set of bytes from the input stream
+    // Write each set of bytes from the input stream
     let mut input = std::pin::pin!(input);
     while let Some(bytes) = input.try_next().await? {
-        hasher.update(&bytes[..]);
         writer.write_all(&bytes[..]).await?;
         upload_size += bytes.len();
     }
@@ -208,12 +202,6 @@ where
     // Flush and shutdown the writer to ensure the bytes get written
     writer.flush().await?;
     writer.shutdown().await?;
-
-    // Validate the hashes match
-    let actual_hash = hasher.finalize();
-    if actual_hash != expected_hash {
-        eyre::bail!("hash mismatch: expected {expected_hash}, got {actual_hash}");
-    }
 
     Ok(upload_size)
 }
@@ -257,15 +245,8 @@ async fn upload_s3_single_part(
     bucket: &str,
     key: &str,
     bytes: bytes::Bytes,
-    expected_hash: blake3::Hash,
 ) -> eyre::Result<usize> {
     let upload_size = bytes.len();
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(&bytes[..]);
-    let actual_hash = hasher.finalize();
-    if actual_hash != expected_hash {
-        eyre::bail!("hash mismatch: expected {expected_hash}, got {actual_hash}");
-    }
 
     let body = http_body_util::Full::new(bytes);
     let body = aws_sdk_s3::primitives::ByteStream::from_body_1_x(body);
@@ -285,7 +266,6 @@ async fn upload_s3_multipart<E>(
     bucket: &str,
     key: &str,
     input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
-    expected_hash: blake3::Hash,
 ) -> eyre::Result<usize>
 where
     eyre::Error: From<E>,
@@ -300,15 +280,7 @@ where
         .upload_id
         .ok_or_eyre("no multipart upload ID returned")?;
 
-    let result = upload_s3_parts_and_validate_hash(
-        client,
-        bucket,
-        key,
-        &multipart_upload_id,
-        input,
-        expected_hash,
-    )
-    .await;
+    let result = upload_s3_parts(client, bucket, key, &multipart_upload_id, input).await;
 
     match result {
         Ok((upload_size, parts)) => {
@@ -345,13 +317,12 @@ where
     }
 }
 
-async fn upload_s3_parts_and_validate_hash<E>(
+async fn upload_s3_parts<E>(
     client: &aws_sdk_s3::Client,
     bucket: &str,
     key: &str,
     upload_id: &str,
     input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
-    expected_hash: blake3::Hash,
 ) -> eyre::Result<(usize, Vec<aws_sdk_s3::types::CompletedPart>)>
 where
     eyre::Error: From<E>,
@@ -361,7 +332,6 @@ where
     let input_reader = tokio_util::io::StreamReader::new(input);
     let mut input_reader = std::pin::pin!(input_reader);
 
-    let mut hasher = blake3::Hasher::new();
     let mut parts = vec![];
 
     let mut upload_size = 0;
@@ -378,9 +348,6 @@ where
 
         // Update the total upload size
         upload_size += chunk_len;
-
-        // Hash the chunk
-        hasher.update(chunk_bytes);
 
         // Upload the chunk
         let chunk_body = http_body_util::Full::new(bytes::Bytes::copy_from_slice(chunk_bytes));
@@ -401,12 +368,6 @@ where
                 .set_e_tag(response.e_tag)
                 .build(),
         );
-    }
-
-    // Validate the hashes match
-    let actual_hash = hasher.finalize();
-    if actual_hash != expected_hash {
-        eyre::bail!("hash mismatch: expected {expected_hash}, got {actual_hash}");
     }
 
     Ok((upload_size, parts))
