@@ -24,7 +24,6 @@ use eyre::{Context as _, OptionExt as _};
 use futures::{StreamExt as _, TryStreamExt as _};
 use joinery::JoinableIterator as _;
 use sqlx::Arguments as _;
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
 use tracing::Span;
 
 pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::Result<()> {
@@ -85,9 +84,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         )
         .route(
             "/v0/blobs/:blob_id",
-            axum::routing::get(get_blob_handler)
-                .head(head_blob_handler)
-                .put(put_blob_handler),
+            axum::routing::get(get_blob_handler).put(put_blob_handler),
         )
         .route(
             "/v0/artifacts/:artifact_hash",
@@ -137,33 +134,15 @@ async fn shutdown_signal() {
 pub struct ServerState {
     env: super::ServerEnv,
     proxy_layers: usize,
-    object_store: Box<dyn object_store::ObjectStore>,
-    object_store_path: object_store::path::Path,
+    object_store: crate::object_store::ObjectStore,
     pub db_pool: sqlx::SqlitePool,
 }
 
 impl ServerState {
     pub async fn new(env: super::ServerEnv) -> eyre::Result<Self> {
         // Handle the special `relative-file` URL (primarily for development)
-        let object_store_url = match env.object_store_url.scheme() {
-            "relative-file" => {
-                let relative_path = env.object_store_url.path();
-                let relative_path = relative_path.strip_prefix('/').unwrap_or(relative_path);
-                let abs_path = tokio::fs::canonicalize(std::path::Path::new(relative_path))
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "failed to canonicalize relative object store path: {relative_path}"
-                        )
-                    })?;
-                url::Url::from_directory_path(abs_path)
-                    .map_err(|_| eyre::eyre!("failed to create object store URL"))?
-            }
-            _ => env.object_store_url.clone(),
-        };
-        let object_store_opts = std::env::vars().map(|(k, v)| (k.to_ascii_lowercase(), v));
-        let (object_store, object_store_path) =
-            object_store::parse_url_opts(&object_store_url, object_store_opts)?;
+        let object_store =
+            crate::object_store::ObjectStore::from_url(&env.object_store_url).await?;
 
         let db_opts = sqlx::sqlite::SqliteConnectOptions::from_str(&env.database_url)?
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
@@ -182,7 +161,6 @@ impl ServerState {
             env,
             proxy_layers,
             object_store,
-            object_store_path,
             db_pool,
         })
     }
@@ -255,34 +233,25 @@ async fn publish_project_handler(
 ) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), ServerError> {
     let mut new_files = 0;
     for (file_id, file_contents) in &project_listing.files {
-        let file_path = state
-            .object_store_path
-            .child("blobs")
-            .child(file_id.to_string());
-        let head_result = state.object_store.head(&file_path).await;
+        let file_path = format!("blobs/{file_id}");
 
-        match head_result {
-            Ok(_) => {
-                // File already uploaded, so ignore
-                continue;
-            }
-            Err(object_store::Error::NotFound { .. }) => {
-                // File does not exist, so upload
-            }
-            Err(error) => {
-                return Err(ServerError::other(
-                    eyre::Error::new(error)
-                        .wrap_err("failed to check if project file already exists"),
-                ));
-            }
+        if state.object_store.exists(&file_path).await? {
+            // Skip blob if it already exists
+            continue;
         }
 
+        let file_contents_stream =
+            futures::stream::once(async { eyre::Ok(bytes::Bytes::copy_from_slice(file_contents)) });
+
+        let expected_hash = file_id
+            .as_blob_id()
+            .map_err(|error| eyre::eyre!(error))
+            .map_err(ServerError::other)?
+            .to_blake3();
         state
             .object_store
-            .put(&file_path, bytes::Bytes::copy_from_slice(file_contents))
-            .await
-            .wrap_err("failed to upload new project file")
-            .map_err(ServerError::other)?;
+            .put_and_validate(&file_path, file_contents_stream, expected_hash)
+            .await?;
 
         new_files += 1;
     }
@@ -422,69 +391,16 @@ async fn publish_project_handler(
     Ok((axum::http::StatusCode::CREATED, axum::Json(response)))
 }
 
-async fn head_blob_handler(
-    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
-) -> Result<axum::response::Response, ServerError> {
-    let blob_path = state
-        .object_store_path
-        .child("blobs")
-        .child(blob_id.to_string());
-    let object = state.object_store.head(&blob_path).await;
-    let body = match object {
-        Ok(_) => {
-            // Build an empty body from a stream. Unlike `Body::empty()`, this
-            // ensures that the `Content-Length` header is not set.
-            const EMPTY: [Result<axum::body::Bytes, ServerError>; 0] = [];
-            Body::from_stream(futures::stream::iter(EMPTY))
-        }
-        Err(object_store::Error::NotFound { .. }) => {
-            return Err(ServerError::NotFound);
-        }
-        Err(error) => {
-            return Err(ServerError::other(error));
-        }
-    };
-
-    let response = axum::response::Response::builder()
-        .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
-        .header(axum::http::header::TRANSFER_ENCODING, "chunked")
-        .body(body)
-        .map_err(ServerError::other)?;
-    Ok(response)
-}
-
 async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
 ) -> Result<axum::response::Response, ServerError> {
-    let blob_path = state
-        .object_store_path
-        .child("blobs")
-        .child(blob_id.to_string());
-    let object = state.object_store.get(&blob_path).await;
-    let object = match object {
-        Ok(object) => object,
-        Err(object_store::Error::NotFound { .. }) => {
-            return Err(ServerError::NotFound);
-        }
-        Err(error) => {
-            return Err(ServerError::other(error));
-        }
-    };
-
-    let body = match object.payload {
-        object_store::GetResultPayload::File(file, _) => {
-            let file = tokio::fs::File::from_std(file);
-            let stream = tokio_util::io::ReaderStream::new(file);
-            axum::body::Body::from_stream(stream)
-        }
-        object_store::GetResultPayload::Stream(stream) => axum::body::Body::from_stream(stream),
-    };
-    let response = axum::response::Response::builder()
-        .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
-        .body(body)
-        .map_err(ServerError::other)?;
+    let blob_key = format!("blobs/{blob_id}");
+    let response = state
+        .object_store
+        .try_get_as_http_response(&blob_key)
+        .await?;
+    let response = response.ok_or_else(|| ServerError::NotFound)?;
     Ok(response)
 }
 
@@ -493,194 +409,21 @@ async fn put_blob_handler(
     axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
     body: axum::body::Body,
 ) -> Result<(axum::http::StatusCode, axum::Json<BlobId>), ServerError> {
-    let blob_path = state
-        .object_store_path
-        .child("blobs")
-        .child(blob_id.to_string());
+    let blob_key = format!("blobs/{blob_id}");
 
-    // Return an error if the blob doesn't exist
+    // Return an error if the blob already exists
 
-    let head = state.object_store.head(&blob_path).await;
-    match head {
-        Ok(_) => {
-            return Err(ServerError::AlreadyExists);
-        }
-        Err(object_store::Error::NotFound { .. }) => {
-            // Object doesn't exist, so we can create it
-        }
-        Err(error) => {
-            return Err(ServerError::other(error));
-        }
+    if state.object_store.exists(&blob_key).await? {
+        return Err(ServerError::AlreadyExists);
     }
 
-    // Start a multipart upload to the object store. We do this so we can
-    // hash the blob while we upload it, then cancel the upload if we discover
-    // the hash doesn't match.
-    // NOTE: Past this point, we shouldn't return early before calling
-    // `abort_multipart` for the object (to abort the upload) or calling
-    // `finalize` on the writer (to finish the upload).
+    let body_stream = body.into_data_stream();
+    let expected_hash = blob_id.to_blake3();
 
-    let (multipart_id, mut object_writer) = state
+    state
         .object_store
-        .put_multipart(&blob_path)
-        .await
-        .map_err(ServerError::other)?;
-
-    let (hasher_tx, mut hasher_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(10);
-    let (uploader_tx, uploader_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(10);
-
-    // Create a task that hashes each chunk of the blob as we receive it
-    let hasher_task = tokio::task::spawn_blocking(move || {
-        let mut hasher = blake3::Hasher::new();
-        while let Some(bytes) = hasher_rx.blocking_recv() {
-            hasher.update(&bytes[..]);
-        }
-
-        hasher.finalize()
-    });
-
-    // Create a task to upload each chunk of the blob
-    let uploader_task = tokio::spawn(async move {
-        // Create a buffered reader from the bytes from the receiver. We use
-        // a size of 1MB because each buffered chunk should get uploaded as a
-        // separate `PUT` request.
-        let uploader_stream =
-            tokio_stream::wrappers::ReceiverStream::new(uploader_rx).map(Ok::<_, std::io::Error>);
-        let uploader_reader = tokio_util::io::StreamReader::new(uploader_stream);
-        let mut uploader_reader = tokio::io::BufReader::with_capacity(1024 * 1024, uploader_reader);
-
-        loop {
-            // Read a chunk from the receiver, up to the buffer size
-            let chunk = uploader_reader.fill_buf().await?;
-            let chunk_len = chunk.len();
-
-            // A length of 0 means we've reached the end
-            if chunk_len == 0 {
-                break;
-            }
-
-            // Write the buffered chunk
-            object_writer
-                .write_all(chunk)
-                .await
-                .wrap_err("failed to write blob chunk")?;
-
-            // Consume the bytes we just read from the buffered reader
-            uploader_reader.consume(chunk_len);
-        }
-
-        eyre::Ok(object_writer)
-    });
-
-    let mut body_stream = body.into_data_stream();
-    let result = loop {
-        let Some(bytes) = body_stream.next().await else {
-            break Ok(());
-        };
-
-        let bytes = match bytes {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                break Err(ServerError::other(error));
-            }
-        };
-
-        // Send the bytes to both the hasher and the uploader tasks
-
-        match hasher_tx.send(bytes.clone()).await {
-            Ok(()) => {}
-            Err(error) => {
-                break Err(ServerError::other(error));
-            }
-        };
-        match uploader_tx.send(bytes).await {
-            Ok(()) => {}
-            Err(error) => {
-                break Err(ServerError::other(error));
-            }
-        }
-    };
-
-    // Close the channels by dropping them
-    drop(hasher_tx);
-    drop(uploader_tx);
-
-    // Abort the multipart upload if we encountered an error reading from
-    // the body
-    if let Err(error) = result {
-        let _ = state
-            .object_store
-            .abort_multipart(&blob_path, &multipart_id)
-            .await
-            .inspect_err(|error| {
-                tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
-            });
-        return Err(error);
-    }
-
-    // Wait for the hasher to finish (aborting the mutlipart upload if it failed)
-    let actual_hash = match hasher_task.await {
-        Ok(hash) => hash,
-        Err(error) => {
-            let _ = state
-                .object_store
-                .abort_multipart(&blob_path, &multipart_id)
-                .await
-                .inspect_err(|error| {
-                    tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
-                });
-            return Err(ServerError::other(error));
-        }
-    };
-
-    // Wait for the uploader task to finish (aborting the multipart upload
-    // if it fails). If it succeeds, we get the object writer back so we can
-    // flush it.
-    let uploader_task_result = uploader_task
-        .await
-        .map_err(eyre::Error::from)
-        .and_then(|result| result);
-    let mut object_writer = match uploader_task_result {
-        Ok(object_writer) => object_writer,
-        Err(error) => {
-            let _ = state
-                .object_store
-                .abort_multipart(&blob_path, &multipart_id)
-                .await
-                .inspect_err(|error| {
-                    tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
-                });
-            return Err(ServerError::other(error));
-        }
-    };
-
-    // Validate the hash of the blob matches the request
-    let actual_blob_id = BlobId::from_blake3(actual_hash);
-    if blob_id != actual_blob_id {
-        state
-            .object_store
-            .abort_multipart(&blob_path, &multipart_id)
-            .await
-            .inspect_err(|error| {
-                tracing::warn!(?blob_path, %error, "failed to abort multipart upload");
-            })
-            .map_err(ServerError::other)?;
-        return Err(ServerError::BadRequest(Cow::Owned(format!(
-            "blob hash mismatch: expected {blob_id}, got {actual_blob_id}"
-        ))));
-    }
-
-    // Flush the stream and shutdown the writer to ensure we finish the
-    // multipart upload
-    object_writer
-        .flush()
-        .await
-        .wrap_err("failed to flush blob writer")
-        .map_err(ServerError::other)?;
-    object_writer
-        .shutdown()
-        .await
-        .wrap_err("failed to shutdown blob writer")?;
+        .put_and_validate(&blob_key, body_stream, expected_hash)
+        .await?;
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(blob_id)))
 }
@@ -862,19 +605,12 @@ async fn known_blobs_handler(
             let state = state.clone();
             let tx = tx.clone();
             async move {
-                let blob_path = state
-                    .object_store_path
-                    .child("blobs")
-                    .child(blob_id.to_string());
-                let head = state.object_store.head(&blob_path).await;
-                match head {
-                    Ok(_) => {
-                        tx.send(blob_id).await.map_err(ServerError::other)?;
-                        Ok(())
-                    }
-                    Err(object_store::Error::NotFound { .. }) => Ok(()),
-                    Err(error) => Err(ServerError::other(error)),
+                let blob_key = format!("blobs/{blob_id}");
+                if state.object_store.exists(&blob_key).await? {
+                    tx.send(blob_id).await.map_err(ServerError::other)?;
                 }
+
+                Ok::<_, ServerError>(())
             }
         })
         .await?;
