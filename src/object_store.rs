@@ -60,40 +60,6 @@ impl ObjectStore {
         }
     }
 
-    pub async fn exists(&self, key: &str) -> eyre::Result<bool> {
-        match self {
-            ObjectStore::S3 {
-                client,
-                bucket,
-                prefix,
-            } => {
-                let object_key = format!("{prefix}{key}");
-                let response = client
-                    .head_object()
-                    .bucket(bucket)
-                    .key(&object_key)
-                    .send()
-                    .await;
-                match response {
-                    Ok(_) => Ok(true),
-                    Err(aws_sdk_s3::error::SdkError::ServiceError(context))
-                        if matches!(
-                            context.err(),
-                            aws_sdk_s3::operation::head_object::HeadObjectError::NotFound(_)
-                        ) =>
-                    {
-                        Ok(false)
-                    }
-                    Err(error) => Err(error.into()),
-                }
-            }
-            ObjectStore::Filesystem { path } => {
-                let object_path = path.join(key);
-                Ok(tokio::fs::try_exists(object_path).await?)
-            }
-        }
-    }
-
     pub async fn try_get_as_http_response(
         &self,
         key: &str,

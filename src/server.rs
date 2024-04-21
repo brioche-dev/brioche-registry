@@ -21,7 +21,6 @@ use brioche::{
 };
 use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
-use futures::{StreamExt as _, TryStreamExt as _};
 use joinery::JoinableIterator as _;
 use sqlx::Arguments as _;
 use tracing::Span;
@@ -576,35 +575,39 @@ async fn known_blobs_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::Json(blob_hashes): axum::Json<HashSet<BlobHash>>,
 ) -> Result<axum::Json<HashSet<BlobHash>>, ServerError> {
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let collect_task = tokio::task::spawn(async move {
-        tokio_stream::wrappers::ReceiverStream::new(rx)
-            .collect::<HashSet<BlobHash>>()
-            .await
-    });
+    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    for hash in &blob_hashes {
+        arguments.add(hash.to_string());
+    }
 
-    futures::stream::iter(blob_hashes)
-        .map(Ok)
-        .try_for_each_concurrent(Some(100), |blob_hash| {
-            let state = state.clone();
-            let tx = tx.clone();
-            async move {
-                let blob_key = format!("blobs/{blob_hash}");
-                if state.object_store.exists(&blob_key).await? {
-                    tx.send(blob_hash).await.map_err(ServerError::other)?;
-                }
+    let placeholders = std::iter::repeat("?")
+        .take(blob_hashes.len())
+        .join_with(", ");
 
-                Ok::<_, ServerError>(())
-            }
-        })
-        .await?;
+    // TODO: Handle changes in `object_store_url` and `object_store_key`
+    let rows = sqlx::query_as_with::<_, (String,), _>(
+        &format!(
+            r#"
+            SELECT blob_hash
+            FROM blobs
+            WHERE blob_hash IN ({placeholders})
+        "#,
+        ),
+        arguments,
+    )
+    .fetch_all(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
 
-    // Drop the sender so the receiving side can finish
-    drop(tx);
-
-    let result = collect_task.await.map_err(ServerError::other)?;
-    Ok(axum::Json(result))
+    let results = rows
+        .into_iter()
+        .map(|row| row.0.parse())
+        .collect::<Result<HashSet<BlobHash>, _>>()
+        .map_err(|error| eyre::eyre!(error))
+        .map_err(ServerError::other)?;
+    Ok(axum::Json(results))
 }
 
 async fn known_resolves_handler(
