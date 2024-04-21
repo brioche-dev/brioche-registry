@@ -1275,6 +1275,7 @@ name = "brioche-registry"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "async-compression",
  "async-trait",
  "aws-config",
  "aws-sdk-s3",

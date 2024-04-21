@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 argon2 = { version = "0.5.3", features = ["std"] }
+async-compression = { version = "0.4.8", features = ["tokio", "zstd"] }
 async-trait = "0.1.79"
 aws-config = "1.2.0"
 aws-sdk-s3 = "1.23.0"

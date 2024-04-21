@@ -21,7 +21,6 @@ use brioche::{
 };
 use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
-use futures::{StreamExt as _, TryStreamExt as _};
 use joinery::JoinableIterator as _;
 use sqlx::Arguments as _;
 use tracing::Span;
@@ -132,9 +131,9 @@ async fn shutdown_signal() {
 }
 
 pub struct ServerState {
-    env: super::ServerEnv,
-    proxy_layers: usize,
-    object_store: crate::object_store::ObjectStore,
+    pub env: super::ServerEnv,
+    pub proxy_layers: usize,
+    pub object_store: crate::object_store::ObjectStore,
     pub db_pool: sqlx::SqlitePool,
 }
 
@@ -233,25 +232,28 @@ async fn publish_project_handler(
 ) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), ServerError> {
     let mut new_files = 0;
     for (file_id, file_contents) in &project_listing.files {
-        let file_path = format!("blobs/{file_id}");
+        let blob_hash = file_id.as_blob_hash().map_err(|_| {
+            ServerError::BadRequest(Cow::Borrowed("could not get blob ID for file ID"))
+        })?;
 
-        if state.object_store.exists(&file_path).await? {
-            // Skip blob if it already exists
+        // Skip blob if it already exists
+        let blob_exists =
+            crate::blob::blob_exists(&state, blob_hash, crate::blob::CompressionScheme::Zstd)
+                .await?;
+        if blob_exists {
             continue;
         }
 
         let file_contents_stream =
             futures::stream::once(async { eyre::Ok(bytes::Bytes::copy_from_slice(file_contents)) });
 
-        let expected_hash = file_id
-            .as_blob_hash()
-            .map_err(|error| eyre::eyre!(error))
-            .map_err(ServerError::other)?
-            .to_blake3();
-        state
-            .object_store
-            .put_and_validate(&file_path, file_contents_stream, expected_hash)
-            .await?;
+        crate::blob::upload_blob(
+            &state,
+            blob_hash,
+            crate::blob::CompressionScheme::Zstd,
+            file_contents_stream,
+        )
+        .await?;
 
         new_files += 1;
     }
@@ -393,13 +395,23 @@ async fn publish_project_handler(
 
 async fn get_blob_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
+    axum::extract::Path(blob_hash_with_extension): axum::extract::Path<String>,
 ) -> Result<axum::response::Response, ServerError> {
-    let blob_key = format!("blobs/{blob_hash}");
-    let response = state
-        .object_store
-        .try_get_as_http_response(&blob_key)
-        .await?;
+    let (blob_hash, compression) = match blob_hash_with_extension.rsplit_once('.') {
+        Some((blob_hash, "zst")) => {
+            let blob_hash: BlobHash = blob_hash.parse().map_err(|error| {
+                ServerError::BadRequest(Cow::Owned(format!("invalid blob hash: {error}")))
+            })?;
+            (blob_hash, crate::blob::CompressionScheme::Zstd)
+        }
+        _ => {
+            return Err(ServerError::BadRequest(Cow::Borrowed(
+                "must fetch blob with an extension (such as /v0/blobs/000000.zst)",
+            )))
+        }
+    };
+
+    let response = crate::blob::try_get_as_http_response(&state, blob_hash, compression).await?;
     let response = response.ok_or_else(|| ServerError::NotFound)?;
     Ok(response)
 }
@@ -409,21 +421,20 @@ async fn put_blob_handler(
     axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
     body: axum::body::Body,
 ) -> Result<(axum::http::StatusCode, axum::Json<BlobHash>), ServerError> {
-    let blob_key = format!("blobs/{blob_hash}");
-
     // Return an error if the blob already exists
-
-    if state.object_store.exists(&blob_key).await? {
+    let blob_exists =
+        crate::blob::blob_exists(&state, blob_hash, crate::blob::CompressionScheme::Zstd).await?;
+    if blob_exists {
         return Err(ServerError::AlreadyExists);
     }
 
-    let body_stream = body.into_data_stream();
-    let expected_hash = blob_hash.to_blake3();
-
-    state
-        .object_store
-        .put_and_validate(&blob_key, body_stream, expected_hash)
-        .await?;
+    crate::blob::upload_blob(
+        &state,
+        blob_hash,
+        crate::blob::CompressionScheme::Zstd,
+        body.into_data_stream(),
+    )
+    .await?;
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(blob_hash)))
 }
@@ -591,35 +602,39 @@ async fn known_blobs_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::Json(blob_hashes): axum::Json<HashSet<BlobHash>>,
 ) -> Result<axum::Json<HashSet<BlobHash>>, ServerError> {
-    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let collect_task = tokio::task::spawn(async move {
-        tokio_stream::wrappers::ReceiverStream::new(rx)
-            .collect::<HashSet<BlobHash>>()
-            .await
-    });
+    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    for hash in &blob_hashes {
+        arguments.add(hash.to_string());
+    }
 
-    futures::stream::iter(blob_hashes)
-        .map(Ok)
-        .try_for_each_concurrent(Some(100), |blob_hash| {
-            let state = state.clone();
-            let tx = tx.clone();
-            async move {
-                let blob_key = format!("blobs/{blob_hash}");
-                if state.object_store.exists(&blob_key).await? {
-                    tx.send(blob_hash).await.map_err(ServerError::other)?;
-                }
+    let placeholders = std::iter::repeat("?")
+        .take(blob_hashes.len())
+        .join_with(", ");
 
-                Ok::<_, ServerError>(())
-            }
-        })
-        .await?;
+    // TODO: Handle changes in `object_store_url` and `object_store_key`
+    let rows = sqlx::query_as_with::<_, (String,), _>(
+        &format!(
+            r#"
+            SELECT blob_hash
+            FROM blobs
+            WHERE blob_hash IN ({placeholders})
+        "#,
+        ),
+        arguments,
+    )
+    .fetch_all(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
 
-    // Drop the sender so the receiving side can finish
-    drop(tx);
-
-    let result = collect_task.await.map_err(ServerError::other)?;
-    Ok(axum::Json(result))
+    let results = rows
+        .into_iter()
+        .map(|row| row.0.parse())
+        .collect::<Result<HashSet<BlobHash>, _>>()
+        .map_err(|error| eyre::eyre!(error))
+        .map_err(ServerError::other)?;
+    Ok(axum::Json(results))
 }
 
 async fn known_resolves_handler(
@@ -883,7 +898,7 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum ServerError {
+pub enum ServerError {
     #[error("internal error")]
     Other(#[from] eyre::Error),
 
@@ -904,7 +919,7 @@ enum ServerError {
 }
 
 impl ServerError {
-    fn other(error: impl Into<eyre::Error>) -> Self {
+    pub fn other(error: impl Into<eyre::Error>) -> Self {
         Self::Other(error.into())
     }
 }
