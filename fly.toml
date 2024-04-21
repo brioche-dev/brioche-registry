@@ -26,14 +26,6 @@ type = "connections"
 hard_limit = 20000
 soft_limit = 10000
 
-[[services.http_checks]]
-grace_period = 1000
-interval = 500
-method = "get"
-path = "/healthcheck"
-protocol = "http"
-timeout = 2000
-
 [[vm]]
 memory = "1gb"
 cpu_kind = "shared"
