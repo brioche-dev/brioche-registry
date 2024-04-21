@@ -396,7 +396,11 @@ async fn get_blob_handler(
     axum::extract::Path(blob_id): axum::extract::Path<BlobId>,
 ) -> Result<axum::response::Response, ServerError> {
     let blob_key = format!("blobs/{blob_id}");
-    let response = state.object_store.get_as_http_response(&blob_key).await?;
+    let response = state
+        .object_store
+        .try_get_as_http_response(&blob_key)
+        .await?;
+    let response = response.ok_or_else(|| ServerError::NotFound)?;
     Ok(response)
 }
 

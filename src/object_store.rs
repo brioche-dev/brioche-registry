@@ -94,7 +94,10 @@ impl ObjectStore {
         }
     }
 
-    pub async fn get_as_http_response(&self, key: &str) -> eyre::Result<axum::response::Response> {
+    pub async fn try_get_as_http_response(
+        &self,
+        key: &str,
+    ) -> eyre::Result<Option<axum::response::Response>> {
         match self {
             ObjectStore::S3 {
                 client,
@@ -124,15 +127,20 @@ impl ObjectStore {
                 );
 
                 let response = axum::response::Redirect::to(presigned_request.uri());
-                Ok(response.into_response())
+                Ok(Some(response.into_response()))
             }
             ObjectStore::Filesystem { path } => {
                 let object_path = path.join(key);
-                let file = tokio::fs::File::open(&object_path).await?;
+                let file = tokio::fs::File::open(&object_path).await;
+                let file = match file {
+                    Ok(file) => file,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                    Err(error) => return Err(error.into()),
+                };
                 let file_stream = tokio_util::io::ReaderStream::new(file);
-                Ok(axum::response::Response::new(
+                Ok(Some(axum::response::Response::new(
                     axum::body::Body::from_stream(file_stream),
-                ))
+                )))
             }
         }
     }
