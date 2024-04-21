@@ -150,7 +150,7 @@ impl ObjectStore {
         key: &str,
         input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
         expected_hash: blake3::Hash,
-    ) -> eyre::Result<()>
+    ) -> eyre::Result<usize>
     where
         eyre::Error: From<E>,
     {
@@ -165,18 +165,18 @@ impl ObjectStore {
                 let input = std::pin::pin!(input);
                 let upload_type = s3_upload_type(input).await?;
 
-                match upload_type {
+                let upload_size = match upload_type {
                     S3UploadType::Single(bytes) => {
                         upload_s3_single_part(client, bucket, &object_key, bytes, expected_hash)
-                            .await?;
+                            .await?
                     }
                     S3UploadType::Multipart(stream) => {
                         upload_s3_multipart(client, bucket, &object_key, stream, expected_hash)
-                            .await?;
+                            .await?
                     }
-                }
+                };
 
-                Ok(())
+                Ok(upload_size)
             }
             ObjectStore::Filesystem { path } => {
                 let object_path = path.join(key);
@@ -198,10 +198,12 @@ impl ObjectStore {
                 let result = write_file_and_validate_hash(buf_writer, input, expected_hash).await;
 
                 match result {
-                    Ok(()) => {
+                    Ok(upload_size) => {
                         // Move the file to its final location if the file
                         // was written and validated
                         tokio::fs::rename(&temp_path, &object_path).await?;
+
+                        Ok(upload_size)
                     }
                     Err(error) => {
                         // Remove the temp file if there was an error
@@ -209,11 +211,9 @@ impl ObjectStore {
                             tracing::warn!(temp_path = %temp_path.display(), %error, "failed to remove temporary file");
                         });
 
-                        return Err(error);
+                        Err(error)
                     }
                 }
-
-                Ok(())
             }
         }
     }
@@ -223,11 +223,12 @@ pub async fn write_file_and_validate_hash<W, E>(
     mut writer: std::pin::Pin<&mut W>,
     input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
     expected_hash: blake3::Hash,
-) -> eyre::Result<()>
+) -> eyre::Result<usize>
 where
     W: tokio::io::AsyncWrite + Send,
     eyre::Error: From<E>,
 {
+    let mut upload_size = 0;
     let mut hasher = blake3::Hasher::new();
 
     // Hash and write each set of bytes from the input stream
@@ -235,6 +236,7 @@ where
     while let Some(bytes) = input.try_next().await? {
         hasher.update(&bytes[..]);
         writer.write_all(&bytes[..]).await?;
+        upload_size += bytes.len();
     }
 
     // Flush and shutdown the writer to ensure the bytes get written
@@ -247,7 +249,7 @@ where
         eyre::bail!("hash mismatch: expected {expected_hash}, got {actual_hash}");
     }
 
-    Ok(())
+    Ok(upload_size)
 }
 
 enum S3UploadType<S> {
@@ -290,7 +292,8 @@ async fn upload_s3_single_part(
     key: &str,
     bytes: bytes::Bytes,
     expected_hash: blake3::Hash,
-) -> eyre::Result<()> {
+) -> eyre::Result<usize> {
+    let upload_size = bytes.len();
     let mut hasher = blake3::Hasher::new();
     hasher.update(&bytes[..]);
     let actual_hash = hasher.finalize();
@@ -308,7 +311,7 @@ async fn upload_s3_single_part(
         .send()
         .await?;
 
-    Ok(())
+    Ok(upload_size)
 }
 
 async fn upload_s3_multipart<E>(
@@ -317,7 +320,7 @@ async fn upload_s3_multipart<E>(
     key: &str,
     input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
     expected_hash: blake3::Hash,
-) -> eyre::Result<()>
+) -> eyre::Result<usize>
 where
     eyre::Error: From<E>,
 {
@@ -342,7 +345,7 @@ where
     .await;
 
     match result {
-        Ok(parts) => {
+        Ok((upload_size, parts)) => {
             // Complete the multipart upload if it was successful
             client
                 .complete_multipart_upload()
@@ -357,6 +360,8 @@ where
                 .send()
                 .await
                 .wrap_err("failed to complete multipart upload")?;
+
+            Ok(upload_size)
         }
         Err(error) => {
             // Abort the multipart upload if there was an error
@@ -369,11 +374,9 @@ where
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "failed to abort multipart upload"));
 
-            return Err(error);
+            Err(error)
         }
     }
-
-    Ok(())
 }
 
 async fn upload_s3_parts_and_validate_hash<E>(
@@ -383,7 +386,7 @@ async fn upload_s3_parts_and_validate_hash<E>(
     upload_id: &str,
     input: impl futures::Stream<Item = Result<bytes::Bytes, E>>,
     expected_hash: blake3::Hash,
-) -> eyre::Result<Vec<aws_sdk_s3::types::CompletedPart>>
+) -> eyre::Result<(usize, Vec<aws_sdk_s3::types::CompletedPart>)>
 where
     eyre::Error: From<E>,
 {
@@ -395,6 +398,7 @@ where
     let mut hasher = blake3::Hasher::new();
     let mut parts = vec![];
 
+    let mut upload_size = 0;
     let mut buffer = vec![0; MIN_UPLOAD_PART_SIZE];
     for part_number in 1.. {
         // Read a chunk from the receiver, up to the buffer size
@@ -405,6 +409,9 @@ where
         if chunk_len == 0 {
             break;
         }
+
+        // Update the total upload size
+        upload_size += chunk_len;
 
         // Hash the chunk
         hasher.update(chunk_bytes);
@@ -436,7 +443,7 @@ where
         eyre::bail!("hash mismatch: expected {expected_hash}, got {actual_hash}");
     }
 
-    Ok(parts)
+    Ok((upload_size, parts))
 }
 
 /// Repeatedly read from the reader to fill the buffer, returning the

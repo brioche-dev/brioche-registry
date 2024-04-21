@@ -132,9 +132,9 @@ async fn shutdown_signal() {
 }
 
 pub struct ServerState {
-    env: super::ServerEnv,
-    proxy_layers: usize,
-    object_store: crate::object_store::ObjectStore,
+    pub env: super::ServerEnv,
+    pub proxy_layers: usize,
+    pub object_store: crate::object_store::ObjectStore,
     pub db_pool: sqlx::SqlitePool,
 }
 
@@ -233,25 +233,19 @@ async fn publish_project_handler(
 ) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), ServerError> {
     let mut new_files = 0;
     for (file_id, file_contents) in &project_listing.files {
-        let file_path = format!("blobs/{file_id}");
+        let blob_hash = file_id.as_blob_hash().map_err(|_| {
+            ServerError::BadRequest(Cow::Borrowed("could not get blob ID for file ID"))
+        })?;
 
-        if state.object_store.exists(&file_path).await? {
-            // Skip blob if it already exists
+        // Skip blob if it already exists
+        if crate::blob::blob_exists(&state, blob_hash).await? {
             continue;
         }
 
         let file_contents_stream =
             futures::stream::once(async { eyre::Ok(bytes::Bytes::copy_from_slice(file_contents)) });
 
-        let expected_hash = file_id
-            .as_blob_hash()
-            .map_err(|error| eyre::eyre!(error))
-            .map_err(ServerError::other)?
-            .to_blake3();
-        state
-            .object_store
-            .put_and_validate(&file_path, file_contents_stream, expected_hash)
-            .await?;
+        crate::blob::upload_blob(&state, blob_hash, file_contents_stream).await?;
 
         new_files += 1;
     }
@@ -409,21 +403,12 @@ async fn put_blob_handler(
     axum::extract::Path(blob_hash): axum::extract::Path<BlobHash>,
     body: axum::body::Body,
 ) -> Result<(axum::http::StatusCode, axum::Json<BlobHash>), ServerError> {
-    let blob_key = format!("blobs/{blob_hash}");
-
     // Return an error if the blob already exists
-
-    if state.object_store.exists(&blob_key).await? {
+    if crate::blob::blob_exists(&state, blob_hash).await? {
         return Err(ServerError::AlreadyExists);
     }
 
-    let body_stream = body.into_data_stream();
-    let expected_hash = blob_hash.to_blake3();
-
-    state
-        .object_store
-        .put_and_validate(&blob_key, body_stream, expected_hash)
-        .await?;
+    crate::blob::upload_blob(&state, blob_hash, body.into_data_stream()).await?;
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(blob_hash)))
 }
@@ -883,7 +868,7 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum ServerError {
+pub enum ServerError {
     #[error("internal error")]
     Other(#[from] eyre::Error),
 
@@ -904,7 +889,7 @@ enum ServerError {
 }
 
 impl ServerError {
-    fn other(error: impl Into<eyre::Error>) -> Self {
+    pub fn other(error: impl Into<eyre::Error>) -> Self {
         Self::Other(error.into())
     }
 }
