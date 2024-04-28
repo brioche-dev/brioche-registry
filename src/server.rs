@@ -90,8 +90,8 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             axum::routing::get(get_recipe_handler).put(put_recipe_handler),
         )
         .route(
-            "/v0/recipes/:recipe_hash/baked",
-            axum::routing::get(get_baked_handler).post(create_baked_handler),
+            "/v0/recipes/:recipe_hash/bake",
+            axum::routing::get(get_bake_handler).post(create_bake_handler),
         )
         .route(
             "/v0/recipes",
@@ -678,7 +678,7 @@ async fn known_bakes_handler(
     Ok(axum::Json(results))
 }
 
-async fn get_baked_handler(
+async fn get_bake_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(recipe_hash): axum::extract::Path<ArtifactHash>,
 ) -> Result<axum::Json<GetResolveResponse>, ServerError> {
@@ -728,7 +728,7 @@ async fn get_baked_handler(
     Ok(axum::Json(response))
 }
 
-async fn create_baked_handler(
+async fn create_bake_handler(
     Authenticated(state): Authenticated,
     axum::extract::Path(input_hash): axum::extract::Path<ArtifactHash>,
     axum::Json(request): axum::Json<CreateResolveRequest>,
