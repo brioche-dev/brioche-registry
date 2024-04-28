@@ -86,26 +86,23 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             axum::routing::get(get_blob_handler).put(put_blob_handler),
         )
         .route(
-            "/v0/artifacts/:artifact_hash",
-            axum::routing::get(get_artifact_handler).put(put_artifact_handler),
+            "/v0/recipes/:recipe_hash",
+            axum::routing::get(get_recipe_handler).put(put_recipe_handler),
         )
         .route(
-            "/v0/artifacts/:artifact_hash/resolve",
-            axum::routing::get(get_resolve_handler).post(create_resolve_handler),
+            "/v0/recipes/:recipe_hash/baked",
+            axum::routing::get(get_baked_handler).post(create_baked_handler),
         )
         .route(
-            "/v0/artifacts",
-            axum::routing::post(bulk_create_artifacts_handler),
+            "/v0/recipes",
+            axum::routing::post(bulk_create_recipes_handler),
         )
         .route(
-            "/v0/known-artifacts",
-            axum::routing::post(known_artifacts_handler),
+            "/v0/known-recipes",
+            axum::routing::post(known_recipes_handler),
         )
         .route("/v0/known-blobs", axum::routing::post(known_blobs_handler))
-        .route(
-            "/v0/known-resolves",
-            axum::routing::post(known_resolves_handler),
-        )
+        .route("/v0/known-bakes", axum::routing::post(known_bakes_handler))
         .layer(trace_layer)
         .with_state(state.clone());
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
@@ -439,16 +436,16 @@ async fn put_blob_handler(
     Ok((axum::http::StatusCode::CREATED, axum::Json(blob_hash)))
 }
 
-async fn get_artifact_handler(
+async fn get_recipe_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(artifact_hash): axum::extract::Path<ArtifactHash>,
+    axum::extract::Path(recipe_hash): axum::extract::Path<ArtifactHash>,
 ) -> Result<axum::Json<LazyArtifact>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let artifact_hash_value = artifact_hash.to_string();
+    let recipe_hash_value = recipe_hash.to_string();
     let record = sqlx::query!(
         "SELECT artifact_json FROM artifacts WHERE artifact_hash = ?",
-        artifact_hash_value,
+        recipe_hash_value,
     )
     .fetch_optional(&mut *db_transaction)
     .await
@@ -458,41 +455,41 @@ async fn get_artifact_handler(
 
     match record {
         Some(record) => {
-            let artifact: LazyArtifact = serde_json::from_str(&record.artifact_json)
+            let recipe: LazyArtifact = serde_json::from_str(&record.artifact_json)
                 .wrap_err_with(|| {
-                    format!("failed to deserialize artifact JSON with hash {artifact_hash}")
+                    format!("failed to deserialize recipe JSON with hash {recipe_hash}")
                 })
                 .map_err(ServerError::other)?;
-            Ok(axum::Json(artifact))
+            Ok(axum::Json(recipe))
         }
         None => Err(ServerError::NotFound),
     }
 }
 
-async fn put_artifact_handler(
+async fn put_recipe_handler(
     Authenticated(state): Authenticated,
-    axum::extract::Path(artifact_hash): axum::extract::Path<ArtifactHash>,
-    axum::Json(artifact): axum::Json<LazyArtifact>,
+    axum::extract::Path(recipe_hash): axum::extract::Path<ArtifactHash>,
+    axum::Json(recipe): axum::Json<LazyArtifact>,
 ) -> Result<(axum::http::StatusCode, axum::Json<ArtifactHash>), ServerError> {
-    if artifact_hash != artifact.hash() {
+    if recipe_hash != recipe.hash() {
         return Err(ServerError::BadRequest(Cow::Owned(format!(
-            "expected artifact hash to be {artifact_hash}, but was {}",
-            artifact.hash()
+            "expected recipe hash to be {recipe_hash}, but was {}",
+            recipe.hash()
         ))));
     }
 
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let artifact_hash_value = artifact_hash.to_string();
-    let artifact_json_value = serde_json::to_string(&artifact).map_err(ServerError::other)?;
+    let recipe_hash_value = recipe_hash.to_string();
+    let recipe_json_value = serde_json::to_string(&recipe).map_err(ServerError::other)?;
     let result = sqlx::query!(
         r#"
             INSERT INTO artifacts (artifact_hash, artifact_json)
             VALUES (?, ?)
             ON CONFLICT (artifact_hash) DO NOTHING
         "#,
-        artifact_hash_value,
-        artifact_json_value,
+        recipe_hash_value,
+        recipe_json_value,
     )
     .execute(&mut *db_transaction)
     .await
@@ -501,35 +498,35 @@ async fn put_artifact_handler(
     db_transaction.commit().await.map_err(ServerError::other)?;
 
     if result.rows_affected() == 0 {
-        Ok((axum::http::StatusCode::OK, axum::Json(artifact_hash)))
+        Ok((axum::http::StatusCode::OK, axum::Json(recipe_hash)))
     } else {
-        Ok((axum::http::StatusCode::CREATED, axum::Json(artifact_hash)))
+        Ok((axum::http::StatusCode::CREATED, axum::Json(recipe_hash)))
     }
 }
 
-async fn bulk_create_artifacts_handler(
+async fn bulk_create_recipes_handler(
     Authenticated(state): Authenticated,
-    axum::Json(artifacts): axum::Json<HashMap<ArtifactHash, LazyArtifact>>,
+    axum::Json(recipes): axum::Json<HashMap<ArtifactHash, LazyArtifact>>,
 ) -> Result<(axum::http::StatusCode, axum::Json<usize>), ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
     let mut arguments = sqlx::sqlite::SqliteArguments::default();
-    for (artifact_hash, artifact) in &artifacts {
-        if *artifact_hash != artifact.hash() {
+    for (recipe_hash, recipe) in &recipes {
+        if *recipe_hash != recipe.hash() {
             return Err(ServerError::BadRequest(Cow::Owned(format!(
-                "expected artifact hash to be {artifact_hash}, but was {}",
-                artifact.hash()
+                "expected recipe hash to be {recipe_hash}, but was {}",
+                recipe.hash()
             ))));
         }
 
-        let artifact_json = serde_json::to_string(artifact).map_err(ServerError::other)?;
+        let recipe_json = serde_json::to_string(recipe).map_err(ServerError::other)?;
 
-        arguments.add(artifact_hash.to_string());
-        arguments.add(artifact_json);
+        arguments.add(recipe_hash.to_string());
+        arguments.add(recipe_json);
     }
 
     let placeholders = std::iter::repeat("(?, ?)")
-        .take(artifacts.len())
+        .take(recipes.len())
         .join_with(", ");
 
     let result = sqlx::query_with(
@@ -551,28 +548,28 @@ async fn bulk_create_artifacts_handler(
         .rows_affected()
         .try_into()
         .map_err(ServerError::other)?;
-    if new_rows != artifacts.len() {
+    if new_rows != recipes.len() {
         return Err(ServerError::other(eyre::eyre!(
-            "failed to insert all artifacts",
+            "failed to insert all recipes",
         )));
     }
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(new_rows)))
 }
 
-async fn known_artifacts_handler(
+async fn known_recipes_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::Json(artifact_hashes): axum::Json<HashSet<ArtifactHash>>,
+    axum::Json(recipe_hashes): axum::Json<HashSet<ArtifactHash>>,
 ) -> Result<axum::Json<HashSet<ArtifactHash>>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
     let mut arguments = sqlx::sqlite::SqliteArguments::default();
-    for hash in &artifact_hashes {
+    for hash in &recipe_hashes {
         arguments.add(hash.to_string());
     }
 
     let placeholders = std::iter::repeat("?")
-        .take(artifact_hashes.len())
+        .take(recipe_hashes.len())
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String,), _>(
@@ -637,20 +634,20 @@ async fn known_blobs_handler(
     Ok(axum::Json(results))
 }
 
-async fn known_resolves_handler(
+async fn known_bakes_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::Json(artifact_hashes): axum::Json<HashSet<(ArtifactHash, ArtifactHash)>>,
+    axum::Json(bakes): axum::Json<HashSet<(ArtifactHash, ArtifactHash)>>,
 ) -> Result<axum::Json<HashSet<(ArtifactHash, ArtifactHash)>>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
     let mut arguments = sqlx::sqlite::SqliteArguments::default();
-    for (input_hash, output_hash) in &artifact_hashes {
+    for (input_hash, output_hash) in &bakes {
         arguments.add(input_hash.to_string());
         arguments.add(output_hash.to_string());
     }
 
     let placeholders = std::iter::repeat("(?, ?)")
-        .take(artifact_hashes.len())
+        .take(bakes.len())
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String, String), _>(
@@ -681,13 +678,13 @@ async fn known_resolves_handler(
     Ok(axum::Json(results))
 }
 
-async fn get_resolve_handler(
+async fn get_baked_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
-    axum::extract::Path(artifact_hash): axum::extract::Path<ArtifactHash>,
+    axum::extract::Path(recipe_hash): axum::extract::Path<ArtifactHash>,
 ) -> Result<axum::Json<GetResolveResponse>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let artifact_hash_value = artifact_hash.to_string();
+    let recipe_hash_value = recipe_hash.to_string();
     let record = sqlx::query!(
         r#"
             SELECT artifact_hash, artifact_json
@@ -696,7 +693,7 @@ async fn get_resolve_handler(
                 ON resolves.output_hash = artifacts.artifact_hash
             WHERE resolves.input_hash = ? AND resolves.is_canonical
         "#,
-        artifact_hash_value,
+        recipe_hash_value,
     )
     .fetch_optional(&mut *db_transaction)
     .await
@@ -709,12 +706,12 @@ async fn get_resolve_handler(
     };
 
     let output_artifact: CompleteArtifact = serde_json::from_str(&record.artifact_json)
-        .wrap_err_with(|| format!("failed to deserialize artifact JSON with hash {artifact_hash}"))
+        .wrap_err_with(|| format!("failed to deserialize recipe JSON with hash {recipe_hash}"))
         .map_err(ServerError::other)?;
     let record_artifact_hash: Result<ArtifactHash, _> = record.artifact_hash.parse();
     let record_artifact_hash = record_artifact_hash
         .map_err(|error| eyre::eyre!(error))
-        .wrap_err_with(|| format!("failed to parse artifact hash {}", record.artifact_hash))
+        .wrap_err_with(|| format!("failed to parse recipe hash {}", record.artifact_hash))
         .map_err(ServerError::other)?;
 
     if output_artifact.hash() != record_artifact_hash {
@@ -731,7 +728,7 @@ async fn get_resolve_handler(
     Ok(axum::Json(response))
 }
 
-async fn create_resolve_handler(
+async fn create_baked_handler(
     Authenticated(state): Authenticated,
     axum::extract::Path(input_hash): axum::extract::Path<ArtifactHash>,
     axum::Json(request): axum::Json<CreateResolveRequest>,
@@ -755,15 +752,13 @@ async fn create_resolve_handler(
         return Err(ServerError::NotFound);
     };
 
-    let input_artifact: LazyArtifact = serde_json::from_str(&input_result.artifact_json)
-        .wrap_err_with(|| {
-            format!("failed to deserialize input artifact JSON with hash {input_hash}")
-        })
+    let input_recipe: LazyArtifact = serde_json::from_str(&input_result.artifact_json)
+        .wrap_err_with(|| format!("failed to deserialize input recipe JSON with hash {input_hash}"))
         .map_err(ServerError::other)?;
-    if input_artifact.hash() != input_hash {
+    if input_recipe.hash() != input_hash {
         return Err(ServerError::Other(eyre::eyre!(
-            "artifact hash {} did not match expected hash {input_hash}",
-            input_artifact.hash()
+            "recipe hash {} did not match expected hash {input_hash}",
+            input_recipe.hash()
         )));
     }
 
@@ -789,12 +784,12 @@ async fn create_resolve_handler(
 
     let output_artifact: LazyArtifact = serde_json::from_str(&output_result.artifact_json)
         .wrap_err_with(|| {
-            format!("failed to deserialize output artifact JSON with hash {output_hash}")
+            format!("failed to deserialize output recipe JSON with hash {output_hash}")
         })
         .map_err(ServerError::other)?;
     let _output_artifact: CompleteArtifact = output_artifact.try_into().map_err(|_| {
         ServerError::BadRequest(Cow::Owned(format!(
-            "output artifact {output_hash} is not a complete artifact"
+            "output recipe {output_hash} is not a complete artifact"
         )))
     })?;
 
@@ -832,10 +827,10 @@ async fn create_resolve_handler(
             .map_err(ServerError::other)?;
 
             if insert_result.rows_affected() > 0 {
-                tracing::info!(%input_hash, %output_hash, "added resolve (non-canonical)");
+                tracing::info!(%input_hash, %output_hash, "added bake (non-canonical)");
                 (canonical_output_hash, true)
             } else {
-                tracing::info!(%input_hash, %output_hash, "received resolve, but already exists (non-canonical)");
+                tracing::info!(%input_hash, %output_hash, "received bake, but already exists (non-canonical)");
                 (canonical_output_hash, false)
             }
         }
@@ -852,7 +847,7 @@ async fn create_resolve_handler(
             .await
             .map_err(ServerError::other)?;
 
-            tracing::info!(%input_hash, %output_hash, "added resolve (canonical)");
+            tracing::info!(%input_hash, %output_hash, "added bake (canonical)");
 
             (output_hash, true)
         }
