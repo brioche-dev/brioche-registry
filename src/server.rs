@@ -444,7 +444,7 @@ async fn get_recipe_handler(
 
     let recipe_hash_value = recipe_hash.to_string();
     let record = sqlx::query!(
-        "SELECT artifact_json FROM artifacts WHERE artifact_hash = ?",
+        "SELECT recipe_json FROM recipes WHERE recipe_hash = ?",
         recipe_hash_value,
     )
     .fetch_optional(&mut *db_transaction)
@@ -455,7 +455,7 @@ async fn get_recipe_handler(
 
     match record {
         Some(record) => {
-            let recipe: LazyArtifact = serde_json::from_str(&record.artifact_json)
+            let recipe: LazyArtifact = serde_json::from_str(&record.recipe_json)
                 .wrap_err_with(|| {
                     format!("failed to deserialize recipe JSON with hash {recipe_hash}")
                 })
@@ -484,9 +484,9 @@ async fn put_recipe_handler(
     let recipe_json_value = serde_json::to_string(&recipe).map_err(ServerError::other)?;
     let result = sqlx::query!(
         r#"
-            INSERT INTO artifacts (artifact_hash, artifact_json)
+            INSERT INTO recipes (recipe_hash, recipe_json)
             VALUES (?, ?)
-            ON CONFLICT (artifact_hash) DO NOTHING
+            ON CONFLICT (recipe_hash) DO NOTHING
         "#,
         recipe_hash_value,
         recipe_json_value,
@@ -532,7 +532,7 @@ async fn bulk_create_recipes_handler(
     let result = sqlx::query_with(
         &format!(
             r#"
-                INSERT INTO artifacts (artifact_hash, artifact_json)
+                INSERT INTO recipes (recipe_hash, recipe_json)
                 VALUES {placeholders}
             "#,
         ),
@@ -575,9 +575,9 @@ async fn known_recipes_handler(
     let rows = sqlx::query_as_with::<_, (String,), _>(
         &format!(
             r#"
-            SELECT artifact_hash
-            FROM artifacts
-            WHERE artifact_hash IN ({placeholders})
+            SELECT recipe_hash
+            FROM recipes
+            WHERE recipe_hash IN ({placeholders})
         "#,
         ),
         arguments,
@@ -654,8 +654,8 @@ async fn known_bakes_handler(
         &format!(
             r#"
             SELECT input_hash, output_hash
-            FROM resolves
-            WHERE (input_hash, output_hash ) IN (VALUES {placeholders})
+            FROM bakes
+            WHERE (input_hash, output_hash) IN (VALUES {placeholders})
         "#,
         ),
         arguments,
@@ -687,11 +687,11 @@ async fn get_baked_handler(
     let recipe_hash_value = recipe_hash.to_string();
     let record = sqlx::query!(
         r#"
-            SELECT artifact_hash, artifact_json
-            FROM artifacts
-            INNER JOIN resolves
-                ON resolves.output_hash = artifacts.artifact_hash
-            WHERE resolves.input_hash = ? AND resolves.is_canonical
+            SELECT recipe_hash, recipe_json
+            FROM recipes
+            INNER JOIN bakes
+                ON bakes.output_hash = recipes.recipe_hash
+            WHERE bakes.input_hash = ? AND bakes.is_canonical
         "#,
         recipe_hash_value,
     )
@@ -705,18 +705,18 @@ async fn get_baked_handler(
         return Err(ServerError::NotFound);
     };
 
-    let output_artifact: CompleteArtifact = serde_json::from_str(&record.artifact_json)
+    let output_artifact: CompleteArtifact = serde_json::from_str(&record.recipe_json)
         .wrap_err_with(|| format!("failed to deserialize recipe JSON with hash {recipe_hash}"))
         .map_err(ServerError::other)?;
-    let record_artifact_hash: Result<ArtifactHash, _> = record.artifact_hash.parse();
-    let record_artifact_hash = record_artifact_hash
+    let record_recipe_hash: Result<ArtifactHash, _> = record.recipe_hash.parse();
+    let record_recipe_hash = record_recipe_hash
         .map_err(|error| eyre::eyre!(error))
-        .wrap_err_with(|| format!("failed to parse recipe hash {}", record.artifact_hash))
+        .wrap_err_with(|| format!("failed to parse recipe hash {}", record.recipe_hash))
         .map_err(ServerError::other)?;
 
-    if output_artifact.hash() != record_artifact_hash {
+    if output_artifact.hash() != record_recipe_hash {
         return Err(ServerError::Other(eyre::eyre!(
-            "artifact hash {} did not match expected hash {record_artifact_hash}",
+            "artifact hash {} did not match expected hash {record_recipe_hash}",
             output_artifact.hash(),
         )));
     }
@@ -738,9 +738,9 @@ async fn create_baked_handler(
     let input_hash_value = input_hash.to_string();
     let input_result = sqlx::query!(
         r#"
-            SELECT artifact_json
-            FROM artifacts
-            WHERE artifact_hash = ?
+            SELECT recipe_json
+            FROM recipes
+            WHERE recipe_hash = ?
         "#,
         input_hash_value,
     )
@@ -752,7 +752,7 @@ async fn create_baked_handler(
         return Err(ServerError::NotFound);
     };
 
-    let input_recipe: LazyArtifact = serde_json::from_str(&input_result.artifact_json)
+    let input_recipe: LazyArtifact = serde_json::from_str(&input_result.recipe_json)
         .wrap_err_with(|| format!("failed to deserialize input recipe JSON with hash {input_hash}"))
         .map_err(ServerError::other)?;
     if input_recipe.hash() != input_hash {
@@ -766,9 +766,9 @@ async fn create_baked_handler(
     let output_hash_value = output_hash.to_string();
     let output_result = sqlx::query!(
         r#"
-            SELECT artifact_json
-            FROM artifacts
-            WHERE artifact_hash = ?
+            SELECT recipe_json
+            FROM recipes
+            WHERE recipe_hash = ?
         "#,
         output_hash_value,
     )
@@ -782,7 +782,7 @@ async fn create_baked_handler(
         ))));
     };
 
-    let output_artifact: LazyArtifact = serde_json::from_str(&output_result.artifact_json)
+    let output_artifact: LazyArtifact = serde_json::from_str(&output_result.recipe_json)
         .wrap_err_with(|| {
             format!("failed to deserialize output recipe JSON with hash {output_hash}")
         })
@@ -796,7 +796,7 @@ async fn create_baked_handler(
     let canonical_result = sqlx::query!(
         r#"
             SELECT output_hash
-            FROM resolves
+            FROM bakes
             WHERE input_hash = ? AND is_canonical
         "#,
         input_hash_value,
@@ -815,8 +815,8 @@ async fn create_baked_handler(
 
             let insert_result = sqlx::query!(
                 r#"
-                    INSERT INTO resolves (input_hash, output_hash, is_canonical)
-                    VALUES (?, ?, FALSE)
+                    INSERT INTO bakes (input_hash, output_hash, is_canonical)
+                    VALUES (?, ?, NULL)
                     ON CONFLICT (input_hash, output_hash) DO NOTHING
                 "#,
                 input_hash_value,
@@ -837,7 +837,7 @@ async fn create_baked_handler(
         None => {
             sqlx::query!(
                 r#"
-                    INSERT INTO resolves (input_hash, output_hash, is_canonical)
+                    INSERT INTO bakes (input_hash, output_hash, is_canonical)
                     VALUES (?, ?, TRUE)
                 "#,
                 input_hash_value,

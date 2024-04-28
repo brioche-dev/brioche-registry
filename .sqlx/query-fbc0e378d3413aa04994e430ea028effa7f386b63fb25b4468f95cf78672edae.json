@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT artifact_json FROM artifacts WHERE artifact_hash = ?",
+  "query": "SELECT recipe_json FROM recipes WHERE recipe_hash = ?",
   "describe": {
     "columns": [
       {
-        "name": "artifact_json",
+        "name": "recipe_json",
         "ordinal": 0,
         "type_info": "Text"
       }
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "3348a8306084f610262ee184b017423fd033b302e103bda4f1b2a9dc67d029b5"
+  "hash": "fbc0e378d3413aa04994e430ea028effa7f386b63fb25b4468f95cf78672edae"
 }

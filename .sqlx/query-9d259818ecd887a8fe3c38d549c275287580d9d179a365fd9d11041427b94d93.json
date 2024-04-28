@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT recipe_json\n            FROM recipes\n            WHERE recipe_hash = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "recipe_json",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9d259818ecd887a8fe3c38d549c275287580d9d179a365fd9d11041427b94d93"
+}

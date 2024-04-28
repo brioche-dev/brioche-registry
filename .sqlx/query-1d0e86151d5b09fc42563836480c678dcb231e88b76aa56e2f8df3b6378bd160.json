@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    INSERT INTO bakes (input_hash, output_hash, is_canonical)\n                    VALUES (?, ?, TRUE)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1d0e86151d5b09fc42563836480c678dcb231e88b76aa56e2f8df3b6378bd160"
+}
