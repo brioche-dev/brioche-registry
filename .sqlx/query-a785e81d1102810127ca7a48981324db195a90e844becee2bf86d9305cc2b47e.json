@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n            SELECT output_hash\n            FROM resolves\n            WHERE input_hash = ? AND is_canonical\n        ",
+  "query": "\n            SELECT output_hash\n            FROM bakes\n            WHERE input_hash = ? AND is_canonical\n        ",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "720268aa2c5df32e2e933e90d581a40091e85c182d33f90bbc129956fb9b87a2"
+  "hash": "a785e81d1102810127ca7a48981324db195a90e844becee2bf86d9305cc2b47e"
 }

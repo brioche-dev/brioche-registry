@@ -1186,7 +1186,7 @@ dependencies = [
 [[package]]
 name = "brioche"
 version = "0.0.1"
-source = "git+https://github.com/brioche-dev/brioche.git#b44e301c0c47325b5f36dfe94331b574f566be0f"
+source = "git+https://github.com/brioche-dev/brioche.git#6ad3202f5cfc04928031a253bd00db7bb7e15d1b"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -1254,7 +1254,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.0.1"
-source = "git+https://github.com/brioche-dev/brioche.git#b44e301c0c47325b5f36dfe94331b574f566be0f"
+source = "git+https://github.com/brioche-dev/brioche.git#6ad3202f5cfc04928031a253bd00db7bb7e15d1b"
 dependencies = [
  "bincode 2.0.0-rc.3",
  "blake3",
