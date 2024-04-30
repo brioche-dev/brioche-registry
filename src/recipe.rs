@@ -1,6 +1,10 @@
-use std::borrow::Borrow;
+use std::{borrow::Borrow, collections::HashSet};
 
-use brioche::recipe::Recipe;
+use brioche::{
+    blob::BlobHash,
+    recipe::{Recipe, RecipeHash},
+};
+use eyre::OptionExt as _;
 use joinery::JoinableIterator as _;
 use sqlx::Arguments as _;
 
@@ -83,4 +87,64 @@ where
     db_transaction.commit().await?;
 
     Ok(result.rows_affected())
+}
+
+pub struct RecipeDescendents {
+    pub recipes: HashSet<RecipeHash>,
+    pub blobs: HashSet<BlobHash>,
+}
+
+pub async fn get_recipe_descendents(
+    state: &ServerState,
+    recipe: RecipeHash,
+) -> eyre::Result<RecipeDescendents> {
+    let mut db_transaction = state.db_pool.begin().await?;
+
+    let recipe_hash_value = recipe.to_string();
+    let records = sqlx::query!(
+        r#"
+            WITH RECURSIVE recipe_descendents (descendent_type, descendent_hash) AS (
+                SELECT "recipe", ?
+                UNION
+                SELECT recipe_children.child_type, recipe_children.child_hash
+                FROM recipe_children
+                INNER JOIN recipe_descendents
+                    ON recipe_descendents.descendent_type = 'recipe'
+                    AND recipe_descendents.descendent_hash = recipe_children.recipe_hash
+            ) SELECT * FROM recipe_descendents;
+        "#,
+        recipe_hash_value,
+    )
+    .fetch_all(&mut *db_transaction)
+    .await?;
+
+    db_transaction.commit().await?;
+
+    let mut descendents = RecipeDescendents {
+        recipes: HashSet::new(),
+        blobs: HashSet::new(),
+    };
+
+    for record in records {
+        let descendent_hash = record
+            .descendent_hash
+            .ok_or_eyre("descendent hash is null")?;
+        match &*record.descendent_type {
+            "recipe" => {
+                let recipe_hash: Result<RecipeHash, _> = descendent_hash.parse();
+                let recipe_hash = recipe_hash.map_err(|error| eyre::eyre!(error))?;
+                descendents.recipes.insert(recipe_hash);
+            }
+            "blob" => {
+                let blob_hash: Result<BlobHash, _> = descendent_hash.parse();
+                let blob_hash = blob_hash.map_err(|error| eyre::eyre!(error))?;
+                descendents.blobs.insert(blob_hash);
+            }
+            other => {
+                eyre::bail!("unexpected descendent type: {other:?}");
+            }
+        }
+    }
+
+    Ok(descendents)
 }

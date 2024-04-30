@@ -14,7 +14,7 @@ aws-sdk-s3 = "1.23.0"
 axum = "0.7.5"
 axum-extra = { version = "0.9.3", features = ["tracing", "typed-header"] }
 blake3 = "1.5.1"
-brioche = { git = "https://github.com/brioche-dev/brioche.git" }
+brioche = { git = "https://github.com/brioche-dev/brioche.git", branch = "improve-fetching" }
 bstr = "1.9.1"
 bytes = "1.6.0"
 clap = { version = "4.5.4", features = ["derive"] }

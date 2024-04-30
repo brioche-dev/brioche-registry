@@ -679,9 +679,15 @@ async fn get_bake_handler(
         )));
     }
 
+    let descendents = crate::recipe::get_recipe_descendents(&state, output_artifact.hash())
+        .await
+        .map_err(ServerError::other)?;
+
     let response = GetBakeResponse {
         output_hash: output_artifact.hash(),
         output_artifact,
+        referenced_blobs: descendents.blobs,
+        referenced_recipes: descendents.recipes,
     };
     Ok(axum::Json(response))
 }
