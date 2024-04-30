@@ -478,26 +478,11 @@ async fn put_recipe_handler(
         ))));
     }
 
-    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+    let new_rows = crate::recipe::save_recipes(&state, [&recipe])
+        .await
+        .map_err(ServerError::other)?;
 
-    let recipe_hash_value = recipe_hash.to_string();
-    let recipe_json_value = serde_json::to_string(&recipe).map_err(ServerError::other)?;
-    let result = sqlx::query!(
-        r#"
-            INSERT INTO recipes (recipe_hash, recipe_json)
-            VALUES (?, ?)
-            ON CONFLICT (recipe_hash) DO NOTHING
-        "#,
-        recipe_hash_value,
-        recipe_json_value,
-    )
-    .execute(&mut *db_transaction)
-    .await
-    .map_err(ServerError::other)?;
-
-    db_transaction.commit().await.map_err(ServerError::other)?;
-
-    if result.rows_affected() == 0 {
+    if new_rows == 0 {
         Ok((axum::http::StatusCode::OK, axum::Json(recipe_hash)))
     } else {
         Ok((axum::http::StatusCode::CREATED, axum::Json(recipe_hash)))
@@ -508,9 +493,6 @@ async fn bulk_create_recipes_handler(
     Authenticated(state): Authenticated,
     axum::Json(recipes): axum::Json<HashMap<RecipeHash, Recipe>>,
 ) -> Result<(axum::http::StatusCode, axum::Json<usize>), ServerError> {
-    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
-
-    let mut arguments = sqlx::sqlite::SqliteArguments::default();
     for (recipe_hash, recipe) in &recipes {
         if *recipe_hash != recipe.hash() {
             return Err(ServerError::BadRequest(Cow::Owned(format!(
@@ -518,36 +500,12 @@ async fn bulk_create_recipes_handler(
                 recipe.hash()
             ))));
         }
-
-        let recipe_json = serde_json::to_string(recipe).map_err(ServerError::other)?;
-
-        arguments.add(recipe_hash.to_string());
-        arguments.add(recipe_json);
     }
 
-    let placeholders = std::iter::repeat("(?, ?)")
-        .take(recipes.len())
-        .join_with(", ");
-
-    let result = sqlx::query_with(
-        &format!(
-            r#"
-                INSERT INTO recipes (recipe_hash, recipe_json)
-                VALUES {placeholders}
-            "#,
-        ),
-        arguments,
-    )
-    .execute(&mut *db_transaction)
-    .await
-    .map_err(ServerError::other)?;
-
-    db_transaction.commit().await.map_err(ServerError::other)?;
-
-    let new_rows: usize = result
-        .rows_affected()
-        .try_into()
+    let new_rows = crate::recipe::save_recipes(&state, recipes.values())
+        .await
         .map_err(ServerError::other)?;
+    let new_rows: usize = new_rows.try_into().map_err(ServerError::other)?;
     if new_rows != recipes.len() {
         return Err(ServerError::other(eyre::eyre!(
             "failed to insert all recipes",
@@ -721,9 +679,15 @@ async fn get_bake_handler(
         )));
     }
 
+    let descendents = crate::recipe::get_recipe_descendents(&state, output_artifact.hash())
+        .await
+        .map_err(ServerError::other)?;
+
     let response = GetBakeResponse {
         output_hash: output_artifact.hash(),
         output_artifact,
+        referenced_blobs: descendents.blobs,
+        referenced_recipes: descendents.recipes,
     };
     Ok(axum::Json(response))
 }
