@@ -478,7 +478,7 @@ async fn put_recipe_handler(
         ))));
     }
 
-    let new_rows = crate::recipe::save_recipes(&state, [&recipe])
+    let new_rows = crate::recipe::save_recipes(&state, &[recipe])
         .await
         .map_err(ServerError::other)?;
 
@@ -502,7 +502,8 @@ async fn bulk_create_recipes_handler(
         }
     }
 
-    let new_rows = crate::recipe::save_recipes(&state, recipes.values())
+    let recipe_values = recipes.values().cloned().collect::<Vec<_>>();
+    let new_rows = crate::recipe::save_recipes(&state, &recipe_values)
         .await
         .map_err(ServerError::other)?;
     let new_rows: usize = new_rows.try_into().map_err(ServerError::other)?;

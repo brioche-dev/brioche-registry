@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, collections::HashSet};
+use std::collections::HashSet;
 
 use brioche::{
     blob::BlobHash,
@@ -10,83 +10,96 @@ use sqlx::Arguments as _;
 
 use crate::server::ServerState;
 
-pub async fn save_recipes<R>(
-    state: &ServerState,
-    recipes: impl IntoIterator<Item = R>,
-) -> eyre::Result<u64>
-where
-    R: Borrow<Recipe>,
-{
+pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Result<u64> {
     let mut db_transaction = state.db_pool.begin().await?;
 
-    let mut arguments = sqlx::sqlite::SqliteArguments::default();
-    let mut child_arguments = sqlx::sqlite::SqliteArguments::default();
-    let mut num_recipes = 0;
-    let mut num_child_records = 0;
-    for recipe in recipes {
-        let recipe = recipe.borrow();
-        let recipe_hash = recipe.hash();
+    let mut num_new_recipes = 0;
+    for recipe_batch in recipes.chunks(400) {
+        let mut arguments = sqlx::sqlite::SqliteArguments::default();
+        let mut num_recipes = 0;
+        let mut recipe_children = vec![];
+        for recipe in recipe_batch {
+            let recipe_hash = recipe.hash();
 
-        let recipe_json = serde_json::to_string(recipe)?;
+            arguments.add(recipe_hash.to_string());
+            arguments.add(sqlx::types::Json(recipe.clone()));
+            num_recipes += 1;
 
-        arguments.add(recipe_hash.to_string());
-        arguments.add(recipe_json);
-        num_recipes += 1;
+            let referenced_recipes = brioche::references::referenced_recipes(recipe);
+            for child_recipe in referenced_recipes {
+                recipe_children.push((recipe_hash, RecipeChild::Recipe(child_recipe)));
+            }
 
-        let referenced_recipes = brioche::references::referenced_recipes(recipe);
-        for child_recipe in referenced_recipes {
-            child_arguments.add(recipe_hash.to_string());
-            child_arguments.add("recipe".to_string());
-            child_arguments.add(child_recipe.to_string());
-            num_child_records += 1;
+            let referenced_blobs = brioche::references::referenced_blobs(recipe);
+            for child_blob in referenced_blobs {
+                recipe_children.push((recipe_hash, RecipeChild::Blob(child_blob)));
+            }
         }
 
-        let referenced_blobs = brioche::references::referenced_blobs(recipe);
-        for child_blob in referenced_blobs {
-            child_arguments.add(recipe_hash.to_string());
-            child_arguments.add("blob".to_string());
-            child_arguments.add(child_blob.to_string());
-            num_child_records += 1;
-        }
-    }
+        let placeholders = std::iter::repeat("(?, ?)")
+            .take(num_recipes)
+            .join_with(", ");
 
-    let placeholders = std::iter::repeat("(?, ?)")
-        .take(num_recipes)
-        .join_with(", ");
-
-    let result = sqlx::query_with(
-        &format!(
-            r#"
+        let result = sqlx::query_with(
+            &format!(
+                r#"
                 INSERT INTO recipes (recipe_hash, recipe_json)
                 VALUES {placeholders}
                 ON CONFLICT DO NOTHING;
             "#,
-        ),
-        arguments,
-    )
-    .execute(&mut *db_transaction)
-    .await?;
+            ),
+            arguments,
+        )
+        .execute(&mut *db_transaction)
+        .await?;
 
-    let child_record_placeholders = std::iter::repeat("(?, ?, ?)")
-        .take(num_child_records)
-        .join_with(", ");
+        num_new_recipes += result.rows_affected();
 
-    sqlx::query_with(
-        &format!(
-            r#"
-                INSERT INTO recipe_children (recipe_hash, child_type, child_hash)
-                VALUES {child_record_placeholders}
-                ON CONFLICT DO NOTHING;
-            "#,
-        ),
-        child_arguments,
-    )
-    .execute(&mut *db_transaction)
-    .await?;
+        for children in recipe_children.chunks(300) {
+            let mut child_arguments = sqlx::sqlite::SqliteArguments::default();
+
+            for (recipe_hash, child) in children {
+                match child {
+                    RecipeChild::Recipe(child_recipe) => {
+                        child_arguments.add(recipe_hash.to_string());
+                        child_arguments.add("recipe");
+                        child_arguments.add(child_recipe.to_string());
+                    }
+                    RecipeChild::Blob(child_blob) => {
+                        child_arguments.add(recipe_hash.to_string());
+                        child_arguments.add("blob");
+                        child_arguments.add(child_blob.to_string());
+                    }
+                }
+            }
+
+            let child_record_placeholders = std::iter::repeat("(?, ?, ?)")
+                .take(children.len())
+                .join_with(", ");
+
+            sqlx::query_with(
+                &format!(
+                    r#"
+                    INSERT INTO recipe_children (recipe_hash, child_type, child_hash)
+                    VALUES {child_record_placeholders}
+                    ON CONFLICT DO NOTHING;
+                "#,
+                ),
+                child_arguments,
+            )
+            .execute(&mut *db_transaction)
+            .await?;
+        }
+    }
 
     db_transaction.commit().await?;
 
-    Ok(result.rows_affected())
+    Ok(num_new_recipes)
+}
+
+enum RecipeChild {
+    Recipe(RecipeHash),
+    Blob(BlobHash),
 }
 
 pub struct RecipeDescendents {
