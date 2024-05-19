@@ -841,8 +841,17 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
         parts: &mut axum::http::request::Parts,
         state: &Arc<ServerState>,
     ) -> Result<Self, Self::Rejection> {
-        let axum_extra::TypedHeader(authorization) =
-            axum_extra::TypedHeader::<Authorization<Basic>>::from_request_parts(parts, &()).await?;
+        let authorization =
+            axum_extra::TypedHeader::<Authorization<Basic>>::from_request_parts(parts, &()).await;
+        let authorization = match authorization {
+            Ok(authorization) => authorization,
+            Err(rejection) if rejection.is_missing() => {
+                return Err(ServerError::CredentialsRequired);
+            }
+            Err(rejection) => {
+                return Err(rejection.into());
+            }
+        };
 
         let username_matches = authorization.username() == "admin";
         let password_matches = argon2::Argon2::default()
@@ -866,6 +875,9 @@ pub enum ServerError {
 
     #[error("{0}")]
     BadRequest(Cow<'static, str>),
+
+    #[error("credentials required")]
+    CredentialsRequired,
 
     #[error("username or password did not match")]
     InvalidCredentials,
@@ -898,6 +910,7 @@ impl axum::response::IntoResponse for ServerError {
             ServerError::AlreadyExists => axum::http::StatusCode::CONFLICT,
             ServerError::NotFound => axum::http::StatusCode::NOT_FOUND,
             ServerError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
+            ServerError::CredentialsRequired => axum::http::StatusCode::FORBIDDEN,
             ServerError::TypedHeaderRejection(rejection) => rejection.into_response().status(),
         };
 
