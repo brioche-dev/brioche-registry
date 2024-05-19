@@ -14,9 +14,9 @@ mod server;
 enum Args {
     Migrate,
     Serve {
-        #[clap(default_value = "0.0.0.0:2000")]
+        #[arg(default_value = "0.0.0.0:2000")]
         addr: std::net::SocketAddr,
-        #[clap(long)]
+        #[arg(long)]
         no_migrate: bool,
     },
     HashPassword,
