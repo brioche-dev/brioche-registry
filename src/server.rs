@@ -12,11 +12,11 @@ use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
 use brioche::{
     blob::BlobHash,
-    project::{Project, ProjectHash, ProjectListing},
+    project::{Project, ProjectHash},
     recipe::{Artifact, Recipe, RecipeHash},
     registry::{
-        CreateBakeRequest, CreateBakeResponse, GetBakeResponse, GetProjectTagResponse,
-        PublishProjectResponse, UpdatedTag,
+        CreateBakeRequest, CreateBakeResponse, CreateProjectTagsRequest, CreateProjectTagsResponse,
+        GetBakeResponse, GetProjectTagResponse, UpdatedTag,
     },
 };
 use bstr::ByteSlice as _;
@@ -72,10 +72,17 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
 
     let app = axum::Router::new()
         .route("/v0/healthcheck", axum::routing::get(healthcheck_handler))
-        .route("/v0/projects", axum::routing::post(publish_project_handler))
+        .route(
+            "/v0/projects",
+            axum::routing::post(bulk_create_projects_handler),
+        )
         .route(
             "/v0/projects/:project_hash",
             axum::routing::get(get_project_handler),
+        )
+        .route(
+            "/v0/project-tags",
+            axum::routing::post(bulk_create_project_tags_handler),
         )
         .route(
             "/v0/project-tags/:project_name/:tag",
@@ -96,6 +103,10 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         .route(
             "/v0/recipes",
             axum::routing::post(bulk_create_recipes_handler),
+        )
+        .route(
+            "/v0/known-projects",
+            axum::routing::post(known_projects_handler),
         )
         .route(
             "/v0/known-recipes",
@@ -200,6 +211,100 @@ async fn get_project_handler(
     Ok(axum::Json(project))
 }
 
+async fn bulk_create_project_tags_handler(
+    Authenticated(state): Authenticated,
+    axum::Json(project_tags): axum::Json<CreateProjectTagsRequest>,
+) -> Result<axum::Json<CreateProjectTagsResponse>, ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let mut tags = vec![];
+
+    for tag in &project_tags.tags {
+        let project_hash_value = tag.project_hash.to_string();
+        let update_result = sqlx::query!(
+            r#"
+                UPDATE project_tags
+                SET is_current = NULL
+                WHERE
+                    name = ?
+                    AND tag = ?
+                    AND project_hash <> ?
+                    AND is_current
+                RETURNING project_hash
+            "#,
+            tag.project_name,
+            tag.tag,
+            project_hash_value,
+        )
+        .fetch_all(&mut *db_transaction)
+        .await
+        .map_err(ServerError::other)?;
+
+        let inserted_records = sqlx::query!(
+            r#"
+                INSERT INTO project_tags (
+                    name,
+                    tag,
+                    project_hash,
+                    is_current
+                ) VALUES (?, ?, ?, TRUE)
+                ON CONFLICT (name, tag, is_current) DO NOTHING
+                RETURNING name, tag
+            "#,
+            tag.project_name,
+            tag.tag,
+            project_hash_value,
+        )
+        .fetch_all(&mut *db_transaction)
+        .await
+        .map_err(ServerError::other)?;
+
+        // Run a query to make sure the current tag matches the expected
+        // project hash. This is a sanity check
+
+        let records = sqlx::query!(
+            r#"
+                SELECT project_hash
+                FROM project_tags
+                WHERE name = ? AND tag = ? AND is_current = TRUE
+            "#,
+            tag.project_name,
+            tag.tag,
+        )
+        .fetch_all(&mut *db_transaction)
+        .await
+        .map_err(ServerError::other)?;
+
+        let record = records
+            .first()
+            .ok_or_eyre("failed to get updated project tag")
+            .map_err(ServerError::other)?;
+        let record_project_hash: Result<ProjectHash, _> = record.project_hash.parse();
+        let record_project_hash = record_project_hash
+            .map_err(|error| eyre::eyre!(error))
+            .map_err(ServerError::other)?;
+        if record_project_hash != tag.project_hash {
+            return Err(ServerError::Other(eyre::eyre!("project tag did not match")));
+        }
+
+        let previous_hash = update_result
+            .first()
+            .and_then(|record| record.project_hash.parse().ok());
+
+        for record in inserted_records {
+            tags.push(UpdatedTag {
+                name: record.name.to_string(),
+                tag: record.tag.to_string(),
+                previous_hash,
+            });
+        }
+    }
+
+    db_transaction.commit().await.map_err(ServerError::other)?;
+
+    Ok(axum::Json(CreateProjectTagsResponse { tags }))
+}
+
 async fn get_project_tag_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path((project_name, tag)): axum::extract::Path<(String, String)>,
@@ -223,42 +328,20 @@ async fn get_project_tag_handler(
     Ok(axum::Json(response))
 }
 
-async fn publish_project_handler(
+async fn bulk_create_projects_handler(
     Authenticated(state): Authenticated,
-    axum::Json(project_listing): axum::Json<ProjectListing>,
-) -> Result<(axum::http::StatusCode, axum::Json<PublishProjectResponse>), ServerError> {
-    let mut new_files = 0;
-    for (file_id, file_contents) in &project_listing.files {
-        let blob_hash = file_id.as_blob_hash().map_err(|_| {
-            ServerError::BadRequest(Cow::Borrowed("could not get blob ID for file ID"))
-        })?;
-
-        // Skip blob if it already exists
-        let blob_exists =
-            crate::blob::blob_exists(&state, blob_hash, crate::blob::CompressionScheme::Zstd)
-                .await?;
-        if blob_exists {
-            continue;
-        }
-
-        let file_contents_stream =
-            futures::stream::once(async { eyre::Ok(bytes::Bytes::copy_from_slice(file_contents)) });
-
-        crate::blob::upload_blob(
-            &state,
-            blob_hash,
-            crate::blob::CompressionScheme::Zstd,
-            file_contents_stream,
-        )
-        .await?;
-
-        new_files += 1;
+    axum::Json(projects): axum::Json<HashMap<ProjectHash, Project>>,
+) -> Result<axum::Json<u64>, ServerError> {
+    for (project_hash, project) in &projects {
+        project_hash
+            .validate_matches(project)
+            .map_err(|error| ServerError::BadRequest(error.to_string().into()))?;
     }
 
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
     let mut new_projects = 0;
-    for (project_hash, project) in &project_listing.projects {
+    for (project_hash, project) in &projects {
         let project_hash_value = project_hash.to_string();
         let project_json = serde_json::to_string(&project).map_err(ServerError::other)?;
         let result = sqlx::query!(
@@ -273,121 +356,115 @@ async fn publish_project_handler(
         new_projects += result.rows_affected();
     }
 
-    let root_project_hash = project_listing.root_project;
-    let root_project_hash_value = root_project_hash.to_string();
-    let root_project = project_listing
-        .projects
-        .get(&project_listing.root_project)
-        .ok_or(ServerError::BadRequest(Cow::Borrowed(
-            "root project not found in project list",
-        )))?;
-    let root_project_name =
-        root_project
-            .definition
-            .name
-            .as_ref()
-            .ok_or(ServerError::BadRequest(Cow::Borrowed(
-                "cannot publish a project without a name",
-            )))?;
+    // let root_project_hash = project_listing.root_project;
+    // let root_project_hash_value = root_project_hash.to_string();
+    // let root_project = project_listing
+    //     .projects
+    //     .get(&project_listing.root_project)
+    //     .ok_or(ServerError::BadRequest(Cow::Borrowed(
+    //         "root project not found in project list",
+    //     )))?;
+    // let root_project_name =
+    //     root_project
+    //         .definition
+    //         .name
+    //         .as_ref()
+    //         .ok_or(ServerError::BadRequest(Cow::Borrowed(
+    //             "cannot publish a project without a name",
+    //         )))?;
 
-    // Tag with `latest` plus the version number
-    let root_project_tags = ["latest"]
-        .into_iter()
-        .chain(root_project.definition.version.as_deref());
+    // // Tag with `latest` plus the version number
+    // let root_project_tags = ["latest"]
+    //     .into_iter()
+    //     .chain(root_project.definition.version.as_deref());
 
-    let mut tags = vec![];
+    // let mut tags = vec![];
 
-    for tag in root_project_tags {
-        let update_result = sqlx::query!(
-            r#"
-                UPDATE project_tags
-                SET is_current = NULL
-                WHERE
-                    name = ?
-                    AND tag = ?
-                    AND project_hash <> ?
-                    AND is_current
-                RETURNING project_hash
-            "#,
-            root_project_name,
-            tag,
-            root_project_hash_value,
-        )
-        .fetch_all(&mut *db_transaction)
-        .await
-        .map_err(ServerError::other)?;
+    // for tag in root_project_tags {
+    //     let update_result = sqlx::query!(
+    //         r#"
+    //             UPDATE project_tags
+    //             SET is_current = NULL
+    //             WHERE
+    //                 name = ?
+    //                 AND tag = ?
+    //                 AND project_hash <> ?
+    //                 AND is_current
+    //             RETURNING project_hash
+    //         "#,
+    //         root_project_name,
+    //         tag,
+    //         root_project_hash_value,
+    //     )
+    //     .fetch_all(&mut *db_transaction)
+    //     .await
+    //     .map_err(ServerError::other)?;
 
-        let inserted_records = sqlx::query!(
-            r#"
-                INSERT INTO project_tags (
-                    name,
-                    tag,
-                    project_hash,
-                    is_current
-                ) VALUES (?, ?, ?, TRUE)
-                ON CONFLICT (name, tag, is_current) DO NOTHING
-                RETURNING name, tag
-            "#,
-            root_project_name,
-            tag,
-            root_project_hash_value,
-        )
-        .fetch_all(&mut *db_transaction)
-        .await
-        .map_err(ServerError::other)?;
+    //     let inserted_records = sqlx::query!(
+    //         r#"
+    //             INSERT INTO project_tags (
+    //                 name,
+    //                 tag,
+    //                 project_hash,
+    //                 is_current
+    //             ) VALUES (?, ?, ?, TRUE)
+    //             ON CONFLICT (name, tag, is_current) DO NOTHING
+    //             RETURNING name, tag
+    //         "#,
+    //         root_project_name,
+    //         tag,
+    //         root_project_hash_value,
+    //     )
+    //     .fetch_all(&mut *db_transaction)
+    //     .await
+    //     .map_err(ServerError::other)?;
 
-        // Run a query to make sure the current tag matches the expected
-        // project hash. This is a sanity check
+    //     // Run a query to make sure the current tag matches the expected
+    //     // project hash. This is a sanity check
 
-        let records = sqlx::query!(
-            r#"
-                SELECT project_hash
-                FROM project_tags
-                WHERE name = ? AND tag = ? AND is_current = TRUE
-            "#,
-            root_project_name,
-            tag
-        )
-        .fetch_all(&mut *db_transaction)
-        .await
-        .map_err(ServerError::other)?;
+    //     let records = sqlx::query!(
+    //         r#"
+    //             SELECT project_hash
+    //             FROM project_tags
+    //             WHERE name = ? AND tag = ? AND is_current = TRUE
+    //         "#,
+    //         root_project_name,
+    //         tag
+    //     )
+    //     .fetch_all(&mut *db_transaction)
+    //     .await
+    //     .map_err(ServerError::other)?;
 
-        let record = records
-            .first()
-            .ok_or_eyre("failed to get updated project tag")
-            .map_err(ServerError::other)?;
-        let record_project_hash: Result<ProjectHash, _> = record.project_hash.parse();
-        let record_project_hash = record_project_hash
-            .map_err(|error| eyre::eyre!(error))
-            .map_err(ServerError::other)?;
-        if record_project_hash != root_project_hash {
-            return Err(ServerError::Other(eyre::eyre!("project tag did not match")));
-        }
+    //     let record = records
+    //         .first()
+    //         .ok_or_eyre("failed to get updated project tag")
+    //         .map_err(ServerError::other)?;
+    //     let record_project_hash: Result<ProjectHash, _> = record.project_hash.parse();
+    //     let record_project_hash = record_project_hash
+    //         .map_err(|error| eyre::eyre!(error))
+    //         .map_err(ServerError::other)?;
+    //     if record_project_hash != root_project_hash {
+    //         return Err(ServerError::Other(eyre::eyre!("project tag did not match")));
+    //     }
 
-        let previous_hash = update_result
-            .first()
-            .and_then(|record| record.project_hash.parse().ok());
+    //     let previous_hash = update_result
+    //         .first()
+    //         .and_then(|record| record.project_hash.parse().ok());
 
-        for record in inserted_records {
-            tags.push(UpdatedTag {
-                name: record.name.to_string(),
-                tag: record.tag.to_string(),
-                previous_hash,
-            });
-        }
-    }
+    //     for record in inserted_records {
+    //         tags.push(UpdatedTag {
+    //             name: record.name.to_string(),
+    //             tag: record.tag.to_string(),
+    //             previous_hash,
+    //         });
+    //     }
+    // }
 
     db_transaction.commit().await.map_err(ServerError::other)?;
 
-    tracing::info!(new_files, new_projects, root_project = %project_listing.root_project, ?tags, "published project");
+    tracing::info!(new_projects, "created projects");
 
-    let response = PublishProjectResponse {
-        root_project: project_listing.root_project,
-        new_files,
-        new_projects,
-        tags,
-    };
-    Ok((axum::http::StatusCode::CREATED, axum::Json(response)))
+    Ok(axum::Json(new_projects))
 }
 
 async fn get_blob_handler(
@@ -514,6 +591,44 @@ async fn bulk_create_recipes_handler(
     }
 
     Ok((axum::http::StatusCode::CREATED, axum::Json(new_rows)))
+}
+
+async fn known_projects_handler(
+    axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
+    axum::Json(project_hashes): axum::Json<HashSet<ProjectHash>>,
+) -> Result<axum::Json<HashSet<ProjectHash>>, ServerError> {
+    let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
+
+    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    for hash in &project_hashes {
+        arguments.add(hash.to_string());
+    }
+
+    let placeholders = std::iter::repeat("?")
+        .take(project_hashes.len())
+        .join_with(", ");
+
+    let rows = sqlx::query_as_with::<_, (String,), _>(
+        &format!(
+            r#"
+            SELECT project_hash
+            FROM projects
+            WHERE project_hash IN ({placeholders})
+        "#,
+        ),
+        arguments,
+    )
+    .fetch_all(&mut *db_transaction)
+    .await
+    .map_err(ServerError::other)?;
+
+    let results = rows
+        .into_iter()
+        .map(|row| row.0.parse())
+        .collect::<Result<HashSet<ProjectHash>, _>>()
+        .map_err(|error| eyre::eyre!(error))
+        .map_err(ServerError::other)?;
+    Ok(axum::Json(results))
 }
 
 async fn known_recipes_handler(
