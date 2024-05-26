@@ -1,6 +1,6 @@
 use std::sync::atomic::AtomicUsize;
 
-use brioche::blob::BlobHash;
+use brioche_core::blob::BlobHash;
 use eyre::WrapErr as _;
 use futures::{StreamExt as _, TryStreamExt as _};
 

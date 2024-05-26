@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use brioche::{
+use brioche_core::{
     blob::BlobHash,
     recipe::{Recipe, RecipeHash},
 };
@@ -25,12 +25,12 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
             arguments.add(sqlx::types::Json(recipe.clone()));
             num_recipes += 1;
 
-            let referenced_recipes = brioche::references::referenced_recipes(recipe);
+            let referenced_recipes = brioche_core::references::referenced_recipes(recipe);
             for child_recipe in referenced_recipes {
                 recipe_children.push((recipe_hash, RecipeChild::Recipe(child_recipe)));
             }
 
-            let referenced_blobs = brioche::references::referenced_blobs(recipe);
+            let referenced_blobs = brioche_core::references::referenced_blobs(recipe);
             for child_blob in referenced_blobs {
                 recipe_children.push((recipe_hash, RecipeChild::Blob(child_blob)));
             }

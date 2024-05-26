@@ -10,7 +10,7 @@ use std::{
 use argon2::PasswordVerifier;
 use axum::body::Body;
 use axum_extra::headers::{authorization::Basic, Authorization};
-use brioche::{
+use brioche_core::{
     blob::BlobHash,
     project::{Project, ProjectHash},
     recipe::{Artifact, Recipe, RecipeHash},
