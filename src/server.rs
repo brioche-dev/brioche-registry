@@ -195,7 +195,7 @@ struct Healthcheck {
 async fn get_project_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(project_hash): axum::extract::Path<ProjectHash>,
-) -> Result<axum::Json<Project>, ServerError> {
+) -> Result<axum::Json<serde_json::Value>, ServerError> {
     let project_hash_value = project_hash.to_string();
     let record = sqlx::query!(
         "SELECT project_json FROM projects WHERE project_hash = ?",
@@ -206,7 +206,7 @@ async fn get_project_handler(
     .wrap_err("failed to fetch project from database")?;
     let record = record.first().ok_or(ServerError::NotFound)?;
 
-    let project: Project =
+    let project: serde_json::Value =
         serde_json::from_str(&record.project_json).wrap_err("failed to parse project")?;
     Ok(axum::Json(project))
 }
@@ -412,7 +412,7 @@ async fn put_blob_handler(
 async fn get_recipe_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path(recipe_hash): axum::extract::Path<RecipeHash>,
-) -> Result<axum::Json<Recipe>, ServerError> {
+) -> Result<axum::Json<serde_json::Value>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
     let recipe_hash_value = recipe_hash.to_string();
@@ -428,7 +428,7 @@ async fn get_recipe_handler(
 
     match record {
         Some(record) => {
-            let recipe: Recipe = serde_json::from_str(&record.recipe_json)
+            let recipe: serde_json::Value = serde_json::from_str(&record.recipe_json)
                 .wrap_err_with(|| {
                     format!("failed to deserialize recipe JSON with hash {recipe_hash}")
                 })
