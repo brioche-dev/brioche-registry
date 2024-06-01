@@ -42,13 +42,28 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
                 .into_iter()
                 .flat_map(|forwarded_for| forwarded_for.as_bytes().split_str(","))
                 .map(|forwarded_for| String::from_utf8_lossy(forwarded_for.trim()));
-            let client_ips = [Cow::Borrowed(received_ip)].into_iter().chain(forwarded_for);
+            let client_ips = [Cow::Borrowed(received_ip)]
+                .into_iter()
+                .chain(forwarded_for);
             let client_ip = client_ips
                 .take(proxy_layers + 1)
                 .last()
                 .unwrap_or(Cow::Borrowed("<unknown>"));
 
-            tracing::info_span!("request", method = %req.method(), path = %req.uri().path(), %client_ip, %request_id)
+            let user_agent = req
+                .headers()
+                .get("User-Agent")
+                .map(|user_agent| user_agent.to_str().unwrap_or("<invalid>"))
+                .unwrap_or("<unknown>");
+
+            tracing::info_span!(
+                "request",
+                method = %req.method(),
+                path = %req.uri().path(),
+                %client_ip,
+                %request_id,
+                %user_agent,
+            )
         })
         .on_request(|_req: &axum::http::Request<Body>, _span: &Span| {
             tracing::info!("received request")
