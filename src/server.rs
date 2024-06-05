@@ -162,9 +162,12 @@ pub struct ServerState {
 
 impl ServerState {
     pub async fn new(env: super::ServerEnv) -> eyre::Result<Self> {
-        // Handle the special `relative-file` URL (primarily for development)
         let object_store =
-            crate::object_store::ObjectStore::from_url(&env.object_store_url).await?;
+            crate::object_store::ObjectStore::new(crate::object_store::ObjectStoreConfig {
+                url: env.object_store_url.clone(),
+                public_base_url: env.public_object_store_base_url.clone(),
+            })
+            .await?;
 
         let db_opts = sqlx::sqlite::SqliteConnectOptions::from_str(&env.database_url)?
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);

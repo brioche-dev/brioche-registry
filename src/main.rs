@@ -75,6 +75,7 @@ struct ServerEnv {
     object_store_url: url::Url,
     password_hash: String,
     proxy_layers: Option<usize>,
+    public_object_store_base_url: Option<url::Url>,
 }
 
 async fn migrate() -> eyre::Result<()> {

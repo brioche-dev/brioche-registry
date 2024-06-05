@@ -9,18 +9,23 @@ pub enum ObjectStore {
         client: aws_sdk_s3::Client,
         bucket: String,
         prefix: String,
+        public_base_url: Option<url::Url>,
     },
     Filesystem {
         path: std::path::PathBuf,
+        public_base_url: Option<url::Url>,
     },
 }
 
 impl ObjectStore {
-    pub async fn from_url(url: &url::Url) -> eyre::Result<Self> {
-        match url.scheme() {
+    pub async fn new(config: ObjectStoreConfig) -> eyre::Result<Self> {
+        match config.url.scheme() {
             "s3" => {
-                let bucket = url.host_str().wrap_err("no bucket specified in URL")?;
-                let prefix_path = url.path().trim_start_matches('/').to_string();
+                let bucket = config
+                    .url
+                    .host_str()
+                    .wrap_err("no bucket specified in URL")?;
+                let prefix_path = config.url.path().trim_start_matches('/').to_string();
                 let prefix = if prefix_path.is_empty() {
                     "".to_string()
                 } else {
@@ -33,16 +38,21 @@ impl ObjectStore {
                     client,
                     bucket: bucket.to_string(),
                     prefix,
+                    public_base_url: config.public_base_url,
                 })
             }
             "file" => {
-                let path = url
+                let path = config
+                    .url
                     .to_file_path()
                     .map_err(|_| eyre::eyre!("invalid file URL"))?;
-                Ok(Self::Filesystem { path })
+                Ok(Self::Filesystem {
+                    path,
+                    public_base_url: config.public_base_url,
+                })
             }
             "relative-file" => {
-                let relative_path = url.path();
+                let relative_path = config.url.path();
                 let relative_path = relative_path.strip_prefix('/').unwrap_or(relative_path);
                 let abs_path = tokio::fs::canonicalize(std::path::Path::new(relative_path))
                     .await
@@ -52,10 +62,16 @@ impl ObjectStore {
                         )
                     })?;
 
-                Ok(Self::Filesystem { path: abs_path })
+                Ok(Self::Filesystem {
+                    path: abs_path,
+                    public_base_url: config.public_base_url,
+                })
             }
             scheme => {
-                eyre::bail!("unsupported scheme {scheme} for object store URL {url}");
+                eyre::bail!(
+                    "unsupported scheme {scheme} for object store URL {}",
+                    config.url
+                );
             }
         }
     }
@@ -64,38 +80,32 @@ impl ObjectStore {
         &self,
         key: &str,
     ) -> eyre::Result<Option<axum::response::Response>> {
+        if let Some(public_base_url) = self.public_base_url() {
+            let object_url = public_base_url
+                .join(key)
+                .wrap_err("failed to get public object url")?;
+            let response = axum::response::Redirect::to(object_url.as_str());
+            return Ok(Some(response.into_response()));
+        }
+
         match self {
             ObjectStore::S3 {
                 client,
                 bucket,
                 prefix,
+                public_base_url: _,
             } => {
                 let object_key = format!("{prefix}{key}");
 
-                let presigning_config = aws_sdk_s3::presigning::PresigningConfig::builder()
-                    .expires_in(std::time::Duration::from_secs(60 * 60))
-                    .build()?;
-                let presigned_request = client
-                    .get_object()
-                    .bucket(bucket)
-                    .key(&object_key)
-                    .presigned(presigning_config)
-                    .await?;
+                let presigned_s3_url = presigned_s3_url(client, bucket, &object_key).await?;
 
-                eyre::ensure!(
-                    presigned_request.method().to_ascii_lowercase() == "get",
-                    "presigned URL has unexpected method {}",
-                    presigned_request.method()
-                );
-                eyre::ensure!(
-                    presigned_request.headers().count() == 0,
-                    "presigned request has extra required headers",
-                );
-
-                let response = axum::response::Redirect::to(presigned_request.uri());
+                let response = axum::response::Redirect::to(presigned_s3_url.as_str());
                 Ok(Some(response.into_response()))
             }
-            ObjectStore::Filesystem { path } => {
+            ObjectStore::Filesystem {
+                path,
+                public_base_url: _,
+            } => {
                 let object_path = path.join(key);
                 let file = tokio::fs::File::open(&object_path).await;
                 let file = match file {
@@ -124,6 +134,7 @@ impl ObjectStore {
                 client,
                 bucket,
                 prefix,
+                public_base_url: _,
             } => {
                 let object_key = format!("{prefix}{key}");
 
@@ -141,7 +152,10 @@ impl ObjectStore {
 
                 Ok(upload_size)
             }
-            ObjectStore::Filesystem { path } => {
+            ObjectStore::Filesystem {
+                path,
+                public_base_url: _,
+            } => {
                 let object_path = path.join(key);
                 let parent_path = object_path.parent().ok_or_eyre("no parent path")?;
 
@@ -180,6 +194,50 @@ impl ObjectStore {
             }
         }
     }
+
+    fn public_base_url(&self) -> Option<&url::Url> {
+        match self {
+            ObjectStore::S3 {
+                public_base_url, ..
+            } => public_base_url.as_ref(),
+            ObjectStore::Filesystem {
+                public_base_url, ..
+            } => public_base_url.as_ref(),
+        }
+    }
+}
+
+pub struct ObjectStoreConfig {
+    pub url: url::Url,
+    pub public_base_url: Option<url::Url>,
+}
+
+async fn presigned_s3_url(
+    client: &aws_sdk_s3::Client,
+    bucket: &str,
+    object_key: &str,
+) -> eyre::Result<String> {
+    let presigning_config = aws_sdk_s3::presigning::PresigningConfig::builder()
+        .expires_in(std::time::Duration::from_secs(60 * 60))
+        .build()?;
+    let presigned_request = client
+        .get_object()
+        .bucket(bucket)
+        .key(object_key)
+        .presigned(presigning_config)
+        .await?;
+
+    eyre::ensure!(
+        presigned_request.method().to_ascii_lowercase() == "get",
+        "presigned URL has unexpected method {}",
+        presigned_request.method()
+    );
+    eyre::ensure!(
+        presigned_request.headers().count() == 0,
+        "presigned request has extra required headers",
+    );
+
+    Ok(presigned_request.uri().to_string())
 }
 
 pub async fn write_file<W, E>(
