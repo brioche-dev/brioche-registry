@@ -20,10 +20,19 @@ jobs:
           curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/cargo-sqlx -o ~/.local/bin/cargo-sqlx
           chmod +x ~/.local/bin/sqlx ~/.local/bin/cargo-sqlx
           echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Set up database
+        run: |
+          cp .env.example .env
+          docker-compose up -d
+      - name: Run migrations
+        run: cargo sqlx migrate run
       - name: Check formatting
         run: cargo fmt -- --check
       - name: Check database schema
-        run: make check-db-schema
+        run: |
+          # NOTE: Run `cargo check` first to prevent the SQLx stuff in `brioche-core` from interfering
+          cargo check || true
+          cargo sqlx prepare --check
       - name: Check Clippy
         run: cargo clippy --all -- -Dwarnings
   test:
