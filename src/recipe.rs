@@ -39,7 +39,9 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
         // let placeholders = std::iter::repeat("(?, ?)")
         //     .take(num_recipes)
         //     .join_with(", ");
-        let placeholders = (0..num_recipes).map(|n| format!("(${}, ${})", 2 * n + 1, 2 * n + 2)).join_with(", ");
+        let placeholders = (0..num_recipes)
+            .map(|n| format!("(${}, ${})", 2 * n + 1, 2 * n + 2))
+            .join_with(", ");
 
         let result = sqlx::query_with(
             &format!(
@@ -74,7 +76,8 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
                 }
             }
 
-            let child_record_placeholders = (0..children.len()).map(|n| format!("(${}, ${}, ${})", n * 3 + 1, n * 3 + 2, n * 3 + 3))
+            let child_record_placeholders = (0..children.len())
+                .map(|n| format!("(${}, ${}, ${})", n * 3 + 1, n * 3 + 2, n * 3 + 3))
                 .join_with(", ");
 
             sqlx::query_with(

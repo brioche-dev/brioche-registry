@@ -513,7 +513,8 @@ async fn known_projects_handler(
         arguments.add(hash.to_string());
     }
 
-    let placeholders = (0..project_hashes.len()).map(|n| format!("${}", n + 1))
+    let placeholders = (0..project_hashes.len())
+        .map(|n| format!("${}", n + 1))
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String,), _>(
@@ -550,7 +551,8 @@ async fn known_recipes_handler(
         arguments.add(hash.to_string());
     }
 
-    let placeholders = (0..recipe_hashes.len()).map(|n| format!("${}", n + 1))
+    let placeholders = (0..recipe_hashes.len())
+        .map(|n| format!("${}", n + 1))
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String,), _>(
@@ -587,7 +589,8 @@ async fn known_blobs_handler(
         arguments.add(hash.to_string());
     }
 
-    let placeholders = (0..blob_hashes.len()).map(|n| format!("${}", n + 1))
+    let placeholders = (0..blob_hashes.len())
+        .map(|n| format!("${}", n + 1))
         .join_with(", ");
 
     // TODO: Handle changes in `object_store_url` and `object_store_key`
@@ -626,9 +629,9 @@ async fn known_bakes_handler(
         arguments.add(output_hash.to_string());
     }
 
-
-    let placeholders = (0..bakes.len()).map(|n| format!("(${}, ${})", n * 2 + 1, n * 2 + 2))
-    .join_with(", ");
+    let placeholders = (0..bakes.len())
+        .map(|n| format!("(${}, ${})", n * 2 + 1, n * 2 + 2))
+        .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String, String), _>(
         &format!(
