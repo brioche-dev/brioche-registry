@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT recipe_hash, recipe_json\n            FROM recipes\n            INNER JOIN bakes\n                ON bakes.output_hash = recipes.recipe_hash\n            WHERE bakes.input_hash = $1 AND bakes.is_canonical\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "recipe_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "recipe_json",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "306256f2b99beed257364ee352e08aaf633c2f3b5d2f675faf79a13ac0bb7679"
+}

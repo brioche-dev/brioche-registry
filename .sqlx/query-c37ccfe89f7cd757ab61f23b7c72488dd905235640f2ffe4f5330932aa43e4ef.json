@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS count\n            FROM blobs\n            WHERE blob_hash = $1 AND object_store_url = $2 AND object_store_key = $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c37ccfe89f7cd757ab61f23b7c72488dd905235640f2ffe4f5330932aa43e4ef"
+}

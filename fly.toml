@@ -4,25 +4,19 @@ primary_region = "sea"
 [build]
 
 [env]
-LITEFS_CONFIG = "/etc/litefs/litefs-flyio.yml"
-BRIOCHE_REGISTRY_DATABASE_URL = "sqlite:///litefs/brioche-registry.db?mode=rwc"
 BRIOCHE_REGISTRY_PROXY_LAYERS = "1"
 LOG_FORMAT = "json"
 
-[mounts]
-source = "litefs"
-destination = "/var/lib/litefs"
-
 [http_service]
-internal_port = 2001
+internal_port = 2000
 force_https = true
 auto_stop_machines = true
 auto_start_machines = true
 min_machines_running = 0
 processes = ["app"]
 
-[services.concurrency]
-type = "connections"
+[http_service.concurrency]
+type = "requests"
 hard_limit = 1000
 soft_limit = 500
 

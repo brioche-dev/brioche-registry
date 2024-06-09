@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT project_hash FROM project_tags WHERE name = $1 AND tag = $2 AND is_current",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "project_hash",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "be0994b127485533498730ddff30f349cd69a74c7e2bfb36af00c8b3b9c1e243"
+}

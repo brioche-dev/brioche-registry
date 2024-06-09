@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                DELETE FROM blobs\n                WHERE blob_hash = $1\n                RETURNING blob_hash, object_store_url, object_store_key\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "blob_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "object_store_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "object_store_key",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "399099e2c7472caf9ba8ff973261cd654829840e22b75a2823f0251bbee6bb08"
+}

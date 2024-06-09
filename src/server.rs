@@ -157,7 +157,7 @@ pub struct ServerState {
     pub env: super::ServerEnv,
     pub proxy_layers: usize,
     pub object_store: crate::object_store::ObjectStore,
-    pub db_pool: sqlx::SqlitePool,
+    pub db_pool: sqlx::PgPool,
 }
 
 impl ServerState {
@@ -169,18 +169,14 @@ impl ServerState {
             })
             .await?;
 
-        let db_opts = sqlx::sqlite::SqliteConnectOptions::from_str(&env.database_url)?
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
-        let db_filename = db_opts.clone().get_filename();
-        let db_pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .min_connections(1)
-            .max_connections(1)
+        let db_opts = sqlx::postgres::PgConnectOptions::from_str(&env.database_url)?;
+        let db_pool = sqlx::postgres::PgPoolOptions::new()
             .connect_with(db_opts)
             .await?;
 
         let proxy_layers = env.proxy_layers.unwrap_or(0);
 
-        tracing::info!(db_filename = %db_filename.display(), "set up database connection");
+        tracing::info!("set up database connection");
 
         Ok(Self {
             env,
@@ -216,17 +212,14 @@ async fn get_project_handler(
 ) -> Result<axum::Json<serde_json::Value>, ServerError> {
     let project_hash_value = project_hash.to_string();
     let record = sqlx::query!(
-        "SELECT project_json FROM projects WHERE project_hash = ?",
+        "SELECT project_json FROM projects WHERE project_hash = $1",
         project_hash_value,
     )
-    .fetch_all(&state.db_pool)
+    .fetch_one(&state.db_pool)
     .await
     .wrap_err("failed to fetch project from database")?;
-    let record = record.first().ok_or(ServerError::NotFound)?;
 
-    let project: serde_json::Value =
-        serde_json::from_str(&record.project_json).wrap_err("failed to parse project")?;
-    Ok(axum::Json(project))
+    Ok(axum::Json(record.project_json))
 }
 
 async fn bulk_create_project_tags_handler(
@@ -242,11 +235,13 @@ async fn bulk_create_project_tags_handler(
         let update_result = sqlx::query!(
             r#"
                 UPDATE project_tags
-                SET is_current = NULL
+                SET
+                    is_current = NULL,
+                    updated_at = NOW()
                 WHERE
-                    name = ?
-                    AND tag = ?
-                    AND project_hash <> ?
+                    name = $1
+                    AND tag = $2
+                    AND project_hash <> $3
                     AND is_current
                 RETURNING project_hash
             "#,
@@ -265,7 +260,7 @@ async fn bulk_create_project_tags_handler(
                     tag,
                     project_hash,
                     is_current
-                ) VALUES (?, ?, ?, TRUE)
+                ) VALUES ($1, $2, $3, TRUE)
                 ON CONFLICT (name, tag, is_current) DO NOTHING
                 RETURNING name, tag
             "#,
@@ -284,7 +279,7 @@ async fn bulk_create_project_tags_handler(
             r#"
                 SELECT project_hash
                 FROM project_tags
-                WHERE name = ? AND tag = ? AND is_current = TRUE
+                WHERE name = $1 AND tag = $2 AND is_current = TRUE
             "#,
             tag.project_name,
             tag.tag,
@@ -328,7 +323,7 @@ async fn get_project_tag_handler(
     axum::extract::Path((project_name, tag)): axum::extract::Path<(String, String)>,
 ) -> Result<axum::Json<GetProjectTagResponse>, ServerError> {
     let records = sqlx::query!(
-        "SELECT project_hash FROM project_tags WHERE name = ? AND tag = ? AND is_current",
+        "SELECT project_hash FROM project_tags WHERE name = $1 AND tag = $2 AND is_current",
         project_name,
         tag,
     )
@@ -361,9 +356,9 @@ async fn bulk_create_projects_handler(
     let mut new_projects = 0;
     for (project_hash, project) in &projects {
         let project_hash_value = project_hash.to_string();
-        let project_json = serde_json::to_string(&project).map_err(ServerError::other)?;
+        let project_json = serde_json::to_value(project).map_err(ServerError::other)?;
         let result = sqlx::query!(
-            "INSERT OR IGNORE INTO projects (project_hash, project_json) VALUES (?, ?)",
+            "INSERT INTO projects (project_hash, project_json) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             project_hash_value,
             project_json
         )
@@ -435,7 +430,7 @@ async fn get_recipe_handler(
 
     let recipe_hash_value = recipe_hash.to_string();
     let record = sqlx::query!(
-        "SELECT recipe_json FROM recipes WHERE recipe_hash = ?",
+        "SELECT recipe_json FROM recipes WHERE recipe_hash = $1",
         recipe_hash_value,
     )
     .fetch_optional(&mut *db_transaction)
@@ -446,7 +441,7 @@ async fn get_recipe_handler(
 
     match record {
         Some(record) => {
-            let recipe: serde_json::Value = serde_json::from_str(&record.recipe_json)
+            let recipe: serde_json::Value = serde_json::from_value(record.recipe_json)
                 .wrap_err_with(|| {
                     format!("failed to deserialize recipe JSON with hash {recipe_hash}")
                 })
@@ -513,13 +508,13 @@ async fn known_projects_handler(
 ) -> Result<axum::Json<HashSet<ProjectHash>>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    let mut arguments = sqlx::postgres::PgArguments::default();
     for hash in &project_hashes {
         arguments.add(hash.to_string());
     }
 
-    let placeholders = std::iter::repeat("?")
-        .take(project_hashes.len())
+    let placeholders = (0..project_hashes.len())
+        .map(|n| format!("${}", n + 1))
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String,), _>(
@@ -551,13 +546,13 @@ async fn known_recipes_handler(
 ) -> Result<axum::Json<HashSet<RecipeHash>>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    let mut arguments = sqlx::postgres::PgArguments::default();
     for hash in &recipe_hashes {
         arguments.add(hash.to_string());
     }
 
-    let placeholders = std::iter::repeat("?")
-        .take(recipe_hashes.len())
+    let placeholders = (0..recipe_hashes.len())
+        .map(|n| format!("${}", n + 1))
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String,), _>(
@@ -589,13 +584,13 @@ async fn known_blobs_handler(
 ) -> Result<axum::Json<HashSet<BlobHash>>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    let mut arguments = sqlx::postgres::PgArguments::default();
     for hash in &blob_hashes {
         arguments.add(hash.to_string());
     }
 
-    let placeholders = std::iter::repeat("?")
-        .take(blob_hashes.len())
+    let placeholders = (0..blob_hashes.len())
+        .map(|n| format!("${}", n + 1))
         .join_with(", ");
 
     // TODO: Handle changes in `object_store_url` and `object_store_key`
@@ -628,14 +623,14 @@ async fn known_bakes_handler(
 ) -> Result<axum::Json<HashSet<(RecipeHash, RecipeHash)>>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let mut arguments = sqlx::sqlite::SqliteArguments::default();
+    let mut arguments = sqlx::postgres::PgArguments::default();
     for (input_hash, output_hash) in &bakes {
         arguments.add(input_hash.to_string());
         arguments.add(output_hash.to_string());
     }
 
-    let placeholders = std::iter::repeat("(?, ?)")
-        .take(bakes.len())
+    let placeholders = (0..bakes.len())
+        .map(|n| format!("(${}, ${})", n * 2 + 1, n * 2 + 2))
         .join_with(", ");
 
     let rows = sqlx::query_as_with::<_, (String, String), _>(
@@ -679,7 +674,7 @@ async fn get_bake_handler(
             FROM recipes
             INNER JOIN bakes
                 ON bakes.output_hash = recipes.recipe_hash
-            WHERE bakes.input_hash = ? AND bakes.is_canonical
+            WHERE bakes.input_hash = $1 AND bakes.is_canonical
         "#,
         recipe_hash_value,
     )
@@ -693,7 +688,7 @@ async fn get_bake_handler(
         return Err(ServerError::NotFound);
     };
 
-    let output_artifact: Artifact = serde_json::from_str(&record.recipe_json)
+    let output_artifact: Artifact = serde_json::from_value(record.recipe_json)
         .wrap_err_with(|| format!("failed to deserialize recipe JSON with hash {recipe_hash}"))
         .map_err(ServerError::other)?;
     let record_recipe_hash: Result<RecipeHash, _> = record.recipe_hash.parse();
@@ -734,7 +729,7 @@ async fn create_bake_handler(
         r#"
             SELECT recipe_json
             FROM recipes
-            WHERE recipe_hash = ?
+            WHERE recipe_hash = $1
         "#,
         input_hash_value,
     )
@@ -746,7 +741,7 @@ async fn create_bake_handler(
         return Err(ServerError::NotFound);
     };
 
-    let input_recipe: Recipe = serde_json::from_str(&input_result.recipe_json)
+    let input_recipe: Recipe = serde_json::from_value(input_result.recipe_json)
         .wrap_err_with(|| format!("failed to deserialize input recipe JSON with hash {input_hash}"))
         .map_err(ServerError::other)?;
     if input_recipe.hash() != input_hash {
@@ -762,7 +757,7 @@ async fn create_bake_handler(
         r#"
             SELECT recipe_json
             FROM recipes
-            WHERE recipe_hash = ?
+            WHERE recipe_hash = $1
         "#,
         output_hash_value,
     )
@@ -776,7 +771,7 @@ async fn create_bake_handler(
         ))));
     };
 
-    let output_artifact: Recipe = serde_json::from_str(&output_result.recipe_json)
+    let output_artifact: Recipe = serde_json::from_value(output_result.recipe_json)
         .wrap_err_with(|| {
             format!("failed to deserialize output recipe JSON with hash {output_hash}")
         })
@@ -791,7 +786,7 @@ async fn create_bake_handler(
         r#"
             SELECT output_hash
             FROM bakes
-            WHERE input_hash = ? AND is_canonical
+            WHERE input_hash = $1 AND is_canonical
         "#,
         input_hash_value,
     )
@@ -809,7 +804,7 @@ async fn create_bake_handler(
             let insert_result = sqlx::query!(
                 r#"
                     INSERT INTO bakes (input_hash, output_hash, is_canonical)
-                    VALUES (?, ?, NULL)
+                    VALUES ($1, $2, NULL)
                     ON CONFLICT (input_hash, output_hash) DO NOTHING
                 "#,
                 input_hash_value,
@@ -831,7 +826,7 @@ async fn create_bake_handler(
             sqlx::query!(
                 r#"
                     INSERT INTO bakes (input_hash, output_hash, is_canonical)
-                    VALUES (?, ?, TRUE)
+                    VALUES ($1, $2, TRUE)
                 "#,
                 input_hash_value,
                 output_hash_value,
