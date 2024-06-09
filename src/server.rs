@@ -356,7 +356,7 @@ async fn bulk_create_projects_handler(
     let mut new_projects = 0;
     for (project_hash, project) in &projects {
         let project_hash_value = project_hash.to_string();
-        let project_json = serde_json::to_value(&project).map_err(ServerError::other)?;
+        let project_json = serde_json::to_value(project).map_err(ServerError::other)?;
         let result = sqlx::query!(
             "INSERT INTO projects (project_hash, project_json) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             project_hash_value,
