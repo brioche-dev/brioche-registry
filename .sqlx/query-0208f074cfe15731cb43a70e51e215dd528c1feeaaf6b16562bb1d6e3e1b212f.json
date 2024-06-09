@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT output_hash\n            FROM bakes\n            WHERE input_hash = $1 AND is_canonical\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "output_hash",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0208f074cfe15731cb43a70e51e215dd528c1feeaaf6b16562bb1d6e3e1b212f"
+}

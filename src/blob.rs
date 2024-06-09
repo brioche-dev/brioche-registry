@@ -60,7 +60,7 @@ pub async fn blob_exists(
         r#"
             SELECT count(*) AS count
             FROM blobs
-            WHERE blob_hash = ? AND object_store_url = ? AND object_store_key = ?
+            WHERE blob_hash = $1 AND object_store_url = $2 AND object_store_key = $3
         "#,
         blob_hash_value,
         object_store_url_value,
@@ -72,7 +72,7 @@ pub async fn blob_exists(
 
     db_transaction.commit().await.map_err(ServerError::other)?;
 
-    Ok(result.count > 0)
+    Ok(result.count.unwrap_or(0) > 0)
 }
 
 pub async fn upload_blob<E>(
@@ -155,7 +155,7 @@ where
         let replaced_records = sqlx::query!(
             r#"
                 DELETE FROM blobs
-                WHERE blob_hash = ?
+                WHERE blob_hash = $1
                 RETURNING blob_hash, object_store_url, object_store_key
             "#,
             blob_hash_value,
@@ -174,12 +174,12 @@ where
                     compressed_object_size,
                     blob_size
                 ) VALUES (
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6
                 )
             "#,
             blob_hash_value,

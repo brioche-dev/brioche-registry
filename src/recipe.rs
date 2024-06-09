@@ -15,7 +15,7 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
 
     let mut num_new_recipes = 0;
     for recipe_batch in recipes.chunks(400) {
-        let mut arguments = sqlx::sqlite::SqliteArguments::default();
+        let mut arguments = sqlx::postgres::PgArguments::default();
         let mut num_recipes = 0;
         let mut recipe_children = vec![];
         for recipe in recipe_batch {
@@ -36,9 +36,10 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
             }
         }
 
-        let placeholders = std::iter::repeat("(?, ?)")
-            .take(num_recipes)
-            .join_with(", ");
+        // let placeholders = std::iter::repeat("(?, ?)")
+        //     .take(num_recipes)
+        //     .join_with(", ");
+        let placeholders = (0..num_recipes).map(|n| format!("(${}, ${})", 2 * n + 1, 2 * n + 2)).join_with(", ");
 
         let result = sqlx::query_with(
             &format!(
@@ -56,7 +57,7 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
         num_new_recipes += result.rows_affected();
 
         for children in recipe_children.chunks(300) {
-            let mut child_arguments = sqlx::sqlite::SqliteArguments::default();
+            let mut child_arguments = sqlx::postgres::PgArguments::default();
 
             for (recipe_hash, child) in children {
                 match child {
@@ -73,8 +74,7 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
                 }
             }
 
-            let child_record_placeholders = std::iter::repeat("(?, ?, ?)")
-                .take(children.len())
+            let child_record_placeholders = (0..children.len()).map(|n| format!("(${}, ${}, ${})", n * 3 + 1, n * 3 + 2, n * 3 + 3))
                 .join_with(", ");
 
             sqlx::query_with(
@@ -117,7 +117,7 @@ pub async fn get_recipe_descendents(
     let records = sqlx::query!(
         r#"
             WITH RECURSIVE recipe_descendents (descendent_type, descendent_hash) AS (
-                SELECT "recipe", ?
+                SELECT 'recipe', $1
                 UNION
                 SELECT recipe_children.child_type, recipe_children.child_hash
                 FROM recipe_children
@@ -142,7 +142,10 @@ pub async fn get_recipe_descendents(
         let descendent_hash = record
             .descendent_hash
             .ok_or_eyre("descendent hash is null")?;
-        match &*record.descendent_type {
+        let descendent_type = record
+            .descendent_type
+            .ok_or_eyre("descendent type is null")?;
+        match &*descendent_type {
             "recipe" => {
                 let recipe_hash: Result<RecipeHash, _> = descendent_hash.parse();
                 let recipe_hash = recipe_hash.map_err(|error| eyre::eyre!(error))?;

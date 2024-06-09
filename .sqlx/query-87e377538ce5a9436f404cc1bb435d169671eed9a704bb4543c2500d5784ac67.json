@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO project_tags (\n                    name,\n                    tag,\n                    project_hash,\n                    is_current\n                ) VALUES ($1, $2, $3, TRUE)\n                ON CONFLICT (name, tag, is_current) DO NOTHING\n                RETURNING name, tag\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "tag",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "87e377538ce5a9436f404cc1bb435d169671eed9a704bb4543c2500d5784ac67"
+}

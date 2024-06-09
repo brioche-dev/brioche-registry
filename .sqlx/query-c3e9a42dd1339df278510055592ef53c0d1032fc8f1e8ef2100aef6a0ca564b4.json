@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE project_tags\n                SET\n                    is_current = NULL,\n                    updated_at = NOW()\n                WHERE\n                    name = $1\n                    AND tag = $2\n                    AND project_hash <> $3\n                    AND is_current\n                RETURNING project_hash\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "project_hash",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c3e9a42dd1339df278510055592ef53c0d1032fc8f1e8ef2100aef6a0ca564b4"
+}

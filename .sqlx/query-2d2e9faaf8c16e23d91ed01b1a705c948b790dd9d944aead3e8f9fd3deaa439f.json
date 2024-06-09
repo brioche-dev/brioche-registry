@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO bakes (input_hash, output_hash, is_canonical)\n                    VALUES ($1, $2, NULL)\n                    ON CONFLICT (input_hash, output_hash) DO NOTHING\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2d2e9faaf8c16e23d91ed01b1a705c948b790dd9d944aead3e8f9fd3deaa439f"
+}
