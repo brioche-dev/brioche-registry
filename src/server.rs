@@ -170,9 +170,28 @@ impl ServerState {
             .await?;
 
         let db_opts = sqlx::postgres::PgConnectOptions::from_str(&env.database_url)?;
-        let db_pool = sqlx::postgres::PgPoolOptions::new()
-            .connect_with(db_opts)
-            .await?;
+        let mut db_pool_opts = sqlx::postgres::PgPoolOptions::new();
+
+        if let Some(min_connections) = env.database_min_connections {
+            db_pool_opts = db_pool_opts.min_connections(min_connections);
+        }
+        if let Some(max_connections) = env.database_max_connections {
+            db_pool_opts = db_pool_opts.max_connections(max_connections);
+        }
+        if let Some(acquire_timeout_seconds) = env.database_acquire_timeout_seconds {
+            db_pool_opts =
+                db_pool_opts.acquire_timeout(Duration::from_secs(acquire_timeout_seconds.into()));
+        }
+        if let Some(max_lifetime_seconds) = env.database_max_lifetime_seconds {
+            db_pool_opts =
+                db_pool_opts.max_lifetime(Duration::from_secs(max_lifetime_seconds.into()));
+        }
+        if let Some(idle_timeout_seconds) = env.database_idle_timeout_seconds {
+            db_pool_opts =
+                db_pool_opts.idle_timeout(Duration::from_secs(idle_timeout_seconds.into()));
+        }
+
+        let db_pool = db_pool_opts.connect_with(db_opts).await?;
 
         let proxy_layers = env.proxy_layers.unwrap_or(0);
 

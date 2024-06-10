@@ -72,6 +72,11 @@ async fn main() -> eyre::Result<()> {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ServerEnv {
     database_url: String,
+    database_min_connections: Option<u32>,
+    database_max_connections: Option<u32>,
+    database_acquire_timeout_seconds: Option<u32>,
+    database_max_lifetime_seconds: Option<u32>,
+    database_idle_timeout_seconds: Option<u32>,
     object_store_url: url::Url,
     password_hash: String,
     proxy_layers: Option<usize>,
