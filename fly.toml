@@ -5,6 +5,11 @@ primary_region = "sea"
 
 [env]
 BRIOCHE_REGISTRY_PROXY_LAYERS = "1"
+BRIOCHE_REGISTRY_DATABASE_MIN_CONNECTIONS = "1"
+BRIOCHE_REGISTRY_DATABASE_MAX_CONNECTIONS = "30"
+BRIOCHE_REGISTRY_DATABASE_ACQUIRE_TIMEOUT_SECONDS = "10"
+BRIOCHE_REGISTRY_DATABASE_MAX_IDLE_TIMEOUT_SECONDS = "300"
+BRIOCHE_REGISTRY_DATABASE_MAX_LIFETIME_SECONDS = "3600"
 LOG_FORMAT = "json"
 
 [http_service]
@@ -17,8 +22,8 @@ processes = ["app"]
 
 [http_service.concurrency]
 type = "requests"
-hard_limit = 1000
-soft_limit = 500
+hard_limit = 500
+soft_limit = 30
 
 [[vm]]
 memory = "2gb"
