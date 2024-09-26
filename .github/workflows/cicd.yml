@@ -23,7 +23,7 @@ jobs:
       - name: Set up database
         run: |
           cp .env.example .env
-          docker-compose up -d
+          docker compose up -d
       - name: Run migrations
         run: cargo sqlx migrate run
       - name: Check formatting
