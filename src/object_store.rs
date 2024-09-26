@@ -32,7 +32,7 @@ impl ObjectStore {
                     format!("{}/", prefix_path)
                 };
                 let aws_config =
-                    aws_config::load_defaults(aws_config::BehaviorVersion::v2023_11_09()).await;
+                    aws_config::load_defaults(aws_config::BehaviorVersion::v2024_03_28()).await;
                 let client = aws_sdk_s3::Client::new(&aws_config);
                 Ok(Self::S3 {
                     client,
