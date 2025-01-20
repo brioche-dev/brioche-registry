@@ -228,7 +228,7 @@ async fn presigned_s3_url(
         .await?;
 
     eyre::ensure!(
-        presigned_request.method().to_ascii_lowercase() == "get",
+        presigned_request.method().eq_ignore_ascii_case("get"),
         "presigned URL has unexpected method {}",
         presigned_request.method()
     );
