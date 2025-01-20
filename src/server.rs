@@ -92,7 +92,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             axum::routing::post(bulk_create_projects_handler),
         )
         .route(
-            "/v0/projects/:project_hash",
+            "/v0/projects/{project_hash}",
             axum::routing::get(get_project_handler),
         )
         .route(
@@ -100,19 +100,19 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             axum::routing::post(bulk_create_project_tags_handler),
         )
         .route(
-            "/v0/project-tags/:project_name/:tag",
+            "/v0/project-tags/{project_name}/{tag}",
             axum::routing::get(get_project_tag_handler),
         )
         .route(
-            "/v0/blobs/:blob_hash",
+            "/v0/blobs/{blob_hash}",
             axum::routing::get(get_blob_handler).put(put_blob_handler),
         )
         .route(
-            "/v0/recipes/:recipe_hash",
+            "/v0/recipes/{recipe_hash}",
             axum::routing::get(get_recipe_handler).put(put_recipe_handler),
         )
         .route(
-            "/v0/recipes/:recipe_hash/bake",
+            "/v0/recipes/{recipe_hash}/bake",
             axum::routing::get(get_bake_handler).post(create_bake_handler),
         )
         .route(
@@ -529,7 +529,9 @@ async fn known_projects_handler(
 
     let mut arguments = sqlx::postgres::PgArguments::default();
     for hash in &project_hashes {
-        arguments.add(hash.to_string());
+        arguments
+            .add(hash.to_string())
+            .map_err(|error| ServerError::other(eyre::eyre!(error)))?;
     }
 
     let placeholders = (0..project_hashes.len())
@@ -567,7 +569,9 @@ async fn known_recipes_handler(
 
     let mut arguments = sqlx::postgres::PgArguments::default();
     for hash in &recipe_hashes {
-        arguments.add(hash.to_string());
+        arguments
+            .add(hash.to_string())
+            .map_err(|error| ServerError::other(eyre::eyre!(error)))?;
     }
 
     let placeholders = (0..recipe_hashes.len())
@@ -605,7 +609,9 @@ async fn known_blobs_handler(
 
     let mut arguments = sqlx::postgres::PgArguments::default();
     for hash in &blob_hashes {
-        arguments.add(hash.to_string());
+        arguments
+            .add(hash.to_string())
+            .map_err(|error| ServerError::other(eyre::eyre!(error)))?;
     }
 
     let placeholders = (0..blob_hashes.len())
@@ -644,8 +650,12 @@ async fn known_bakes_handler(
 
     let mut arguments = sqlx::postgres::PgArguments::default();
     for (input_hash, output_hash) in &bakes {
-        arguments.add(input_hash.to_string());
-        arguments.add(output_hash.to_string());
+        arguments
+            .add(input_hash.to_string())
+            .map_err(|error| ServerError::other(eyre::eyre!(error)))?;
+        arguments
+            .add(output_hash.to_string())
+            .map_err(|error| ServerError::other(eyre::eyre!(error)))?;
     }
 
     let placeholders = (0..bakes.len())
@@ -876,7 +886,6 @@ async fn create_bake_handler(
 
 struct Authenticated(Arc<ServerState>);
 
-#[async_trait::async_trait]
 impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
     type Rejection = ServerError;
 

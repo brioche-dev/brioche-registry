@@ -21,8 +21,12 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
         for recipe in recipe_batch {
             let recipe_hash = recipe.hash();
 
-            arguments.add(recipe_hash.to_string());
-            arguments.add(sqlx::types::Json(recipe.clone()));
+            arguments
+                .add(recipe_hash.to_string())
+                .map_err(|error| eyre::eyre!(error))?;
+            arguments
+                .add(sqlx::types::Json(recipe.clone()))
+                .map_err(|error| eyre::eyre!(error))?;
             num_recipes += 1;
 
             let referenced_recipes = brioche_core::references::referenced_recipes(recipe);
@@ -64,14 +68,26 @@ pub async fn save_recipes(state: &ServerState, recipes: &[Recipe]) -> eyre::Resu
             for (recipe_hash, child) in children {
                 match child {
                     RecipeChild::Recipe(child_recipe) => {
-                        child_arguments.add(recipe_hash.to_string());
-                        child_arguments.add("recipe");
-                        child_arguments.add(child_recipe.to_string());
+                        child_arguments
+                            .add(recipe_hash.to_string())
+                            .map_err(|error| eyre::eyre!(error))?;
+                        child_arguments
+                            .add("recipe")
+                            .map_err(|error| eyre::eyre!(error))?;
+                        child_arguments
+                            .add(child_recipe.to_string())
+                            .map_err(|error| eyre::eyre!(error))?;
                     }
                     RecipeChild::Blob(child_blob) => {
-                        child_arguments.add(recipe_hash.to_string());
-                        child_arguments.add("blob");
-                        child_arguments.add(child_blob.to_string());
+                        child_arguments
+                            .add(recipe_hash.to_string())
+                            .map_err(|error| eyre::eyre!(error))?;
+                        child_arguments
+                            .add("blob")
+                            .map_err(|error| eyre::eyre!(error))?;
+                        child_arguments
+                            .add(child_blob.to_string())
+                            .map_err(|error| eyre::eyre!(error))?;
                     }
                 }
             }
