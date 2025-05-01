@@ -110,19 +110,11 @@ async fn shutdown_signal() {
 pub struct ServerState {
     pub env: super::ServerEnv,
     pub proxy_layers: usize,
-    pub object_store: crate::object_store::ObjectStore,
     pub db_pool: sqlx::PgPool,
 }
 
 impl ServerState {
     pub async fn new(env: super::ServerEnv) -> eyre::Result<Self> {
-        let object_store =
-            crate::object_store::ObjectStore::new(crate::object_store::ObjectStoreConfig {
-                url: env.object_store_url.clone(),
-                public_base_url: env.public_object_store_base_url.clone(),
-            })
-            .await?;
-
         let db_opts = sqlx::postgres::PgConnectOptions::from_str(&env.database_url)?;
         let mut db_pool_opts = sqlx::postgres::PgPoolOptions::new();
 
@@ -154,7 +146,6 @@ impl ServerState {
         Ok(Self {
             env,
             proxy_layers,
-            object_store,
             db_pool,
         })
     }

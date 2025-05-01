@@ -5,9 +5,6 @@ use clap::Parser;
 use eyre::Context as _;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-mod blob;
-mod object_store;
-mod recipe;
 mod server;
 
 #[derive(Debug, Parser)]
