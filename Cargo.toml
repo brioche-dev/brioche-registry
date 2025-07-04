@@ -6,6 +6,11 @@ rust-version = "1.88"     # To align with the rust-toolchain.toml
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
 [dependencies]
 argon2 = { version = "0.5.3", features = ["std"] }
 async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }

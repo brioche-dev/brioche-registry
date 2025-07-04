@@ -2,7 +2,7 @@ use std::{borrow::Cow, net::SocketAddr, str::FromStr as _, sync::Arc, time::Dura
 
 use argon2::PasswordVerifier;
 use axum::body::Body;
-use axum_extra::headers::{authorization::Basic, Authorization};
+use axum_extra::headers::{Authorization, authorization::Basic};
 use brioche_core::{
     project::ProjectHash,
     registry::{
@@ -30,9 +30,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
                 .into_iter()
                 .flat_map(|forwarded_for| forwarded_for.as_bytes().split_str(","))
                 .map(|forwarded_for| String::from_utf8_lossy(forwarded_for.trim()));
-            let client_ips = [Cow::Borrowed(received_ip)]
-                .into_iter()
-                .chain(forwarded_for);
+            let client_ips = std::iter::once(Cow::Borrowed(received_ip)).chain(forwarded_for);
             let client_ip = client_ips
                 .take(proxy_layers + 1)
                 .last()
@@ -41,8 +39,9 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             let user_agent = req
                 .headers()
                 .get("User-Agent")
-                .map(|user_agent| user_agent.to_str().unwrap_or("<invalid>"))
-                .unwrap_or("<unknown>");
+                .map_or("<unknown>", |user_agent| {
+                    user_agent.to_str().unwrap_or("<invalid>")
+                });
 
             tracing::info_span!(
                 "request",
@@ -54,7 +53,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             )
         })
         .on_request(|_req: &axum::http::Request<Body>, _span: &Span| {
-            tracing::info!("received request")
+            tracing::info!("received request");
         })
         .on_response(
             |res: &axum::http::Response<Body>, latency: Duration, _span: &Span| {
@@ -62,14 +61,14 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
                     status = res.status().as_u16(),
                     latency = latency.as_secs_f32(),
                     "response"
-                )
+                );
             },
         )
         .on_failure(
             |err: tower_http::classify::ServerErrorsFailureClass,
              latency: Duration,
              _span: &Span| {
-                tracing::error!(error = %err, latency = latency.as_secs_f32(), "request failed")
+                tracing::error!(error = %err, latency = latency.as_secs_f32(), "request failed");
             },
         );
 
@@ -353,14 +352,14 @@ impl axum::response::IntoResponse for ServerError {
         });
 
         let status_code = match self {
-            ServerError::Other(error) => {
+            Self::Other(error) => {
                 tracing::error!("internal error: {error:#}");
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR
             }
-            ServerError::NotFound => axum::http::StatusCode::NOT_FOUND,
-            ServerError::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
-            ServerError::CredentialsRequired => axum::http::StatusCode::FORBIDDEN,
-            ServerError::TypedHeaderRejection(rejection) => rejection.into_response().status(),
+            Self::NotFound => axum::http::StatusCode::NOT_FOUND,
+            Self::InvalidCredentials => axum::http::StatusCode::UNAUTHORIZED,
+            Self::CredentialsRequired => axum::http::StatusCode::FORBIDDEN,
+            Self::TypedHeaderRejection(rejection) => rejection.into_response().status(),
         };
 
         (status_code, axum::response::Json(body)).into_response()
