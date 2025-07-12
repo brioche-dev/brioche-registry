@@ -1,7 +1,7 @@
-version: '3.9'
+version: "3.9"
 services:
   db:
-    image: postgres
+    image: postgres:17.5-bookworm
     ports:
       - 6543:5432
     volumes:
