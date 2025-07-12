@@ -6,7 +6,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY src src
 COPY migrations migrations
 COPY .sqlx .sqlx
-RUN mkdir -p /app/bin
 RUN cargo install --locked --path . --root /app
 
 FROM debian:bookworm-slim
