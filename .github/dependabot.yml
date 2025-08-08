@@ -25,3 +25,12 @@ updates:
       cargo:
         patterns:
           - "*"
+
+  - package-ecosystem: "docker-compose"
+    directories:
+      - "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "17:00"
+      timezone: "America/Los_Angeles"
