@@ -1,12 +1,12 @@
-version: "3.9"
 services:
   db:
     image: postgres:17.5-bookworm
-    ports:
-      - 6543:5432
     volumes:
       - db-data:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: brioche-registry
+    ports:
+      - "6543:5432"
+
 volumes:
   db-data:
