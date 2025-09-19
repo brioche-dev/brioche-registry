@@ -1,4 +1,4 @@
-FROM rust:1.90.0-trixie AS builder
+FROM docker.io/library/rust:1.90.0-trixie AS builder
 
 WORKDIR /src/brioche-registry
 
@@ -8,7 +8,7 @@ COPY migrations migrations
 COPY .sqlx .sqlx
 RUN cargo install --locked --path . --root /app
 
-FROM debian:trixie-slim
+FROM docker.io/library/debian:trixie-slim
 
 COPY --from=builder /app/bin/brioche-registry /usr/local/bin/brioche-registry
 
