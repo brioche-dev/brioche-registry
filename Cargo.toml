@@ -2,7 +2,7 @@
 name = "brioche-registry"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.89"     # To align with the rust-toolchain.toml
+rust-version = "1.90"     # To align with the rust-toolchain.toml
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

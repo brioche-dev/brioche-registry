@@ -1,4 +1,4 @@
-FROM rust:1.89.0-bookworm AS builder
+FROM docker.io/library/rust:1.90.0-trixie AS builder
 
 WORKDIR /src/brioche-registry
 
@@ -8,14 +8,14 @@ COPY migrations migrations
 COPY .sqlx .sqlx
 RUN cargo install --locked --path . --root /app
 
-FROM debian:bookworm-slim
+FROM docker.io/library/debian:trixie-slim
 
 COPY --from=builder /app/bin/brioche-registry /usr/local/bin/brioche-registry
 
 ENV DEBIAN_FRONTEND=O
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y bash=5.2.15-2+b8 curl=7.88.1-10+deb12u12 fuse3=3.14.0-4 sqlite3=3.40.1-2+deb12u1 ca-certificates=20230311; \
+    apt-get install -y bash=5.2.37-2+b5 curl=8.14.1-2 fuse3=3.17.2-3 sqlite3=3.46.1-7 ca-certificates=20250419; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
