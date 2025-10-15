@@ -4,23 +4,20 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "friday"
-      time: "17:00"
-      timezone: "America/Los_Angeles"
+      day: "sunday"
 
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "friday"
-      time: "17:00"
-      timezone: "America/Los_Angeles"
+      day: "sunday"
     # Update all the dependencies:
+    # Update the direct dependencies and not the indirect ones,
+    # since there are too many ones, and dependabot reaches its 1h timeout most of the time):
     # - direct: explicitly defined dependencies in the Cargo.toml file
     # - indirect: transient dependencies in the Cargo.lock file
     allow:
       - dependency-type: direct
-      - dependency-type: indirect
     groups:
       cargo:
         patterns:
@@ -31,6 +28,4 @@ updates:
       - "/"
     schedule:
       interval: "weekly"
-      day: "friday"
-      time: "17:00"
-      timezone: "America/Los_Angeles"
+      day: "sunday"
