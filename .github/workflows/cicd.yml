@@ -13,13 +13,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@v1
       - name: Install SQLx CLI
-        run: |
-          mkdir -p ~/.local/bin
-          curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/sqlx -o ~/.local/bin/sqlx
-          curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/cargo-sqlx -o ~/.local/bin/cargo-sqlx
-          chmod +x ~/.local/bin/sqlx ~/.local/bin/cargo-sqlx
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        run: brioche install -r sqlx_cli
       - name: Set up database
         run: |
           cp .env.example .env
