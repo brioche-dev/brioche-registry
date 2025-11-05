@@ -32,6 +32,7 @@ jobs:
           cargo sqlx prepare --check
       - name: Check Clippy
         run: cargo clippy --all -- -Dwarnings
+
   test:
     name: Run tests
     runs-on: ubuntu-24.04
