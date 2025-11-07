@@ -1,8 +1,8 @@
 services:
   db:
-    image: postgres:18.0-bookworm
+    image: docker.io/postgres:18.0-trixie
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     environment:
       POSTGRES_PASSWORD: brioche-registry
     ports:
