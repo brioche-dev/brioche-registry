@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "sqlx_cli": "b01f6a207ef44877439b8048b1fa7f19cec35d7c9422242b781bf7b54b4eb8b0"
+  }
+}

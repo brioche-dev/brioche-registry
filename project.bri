@@ -1,0 +1,7 @@
+import sqlxCli from "sqlx_cli";
+
+/**
+ * Returns a recipe containing the SQLx CLI that
+ * will be used in the CI / CD pipeline.
+ */
+export default sqlxCli;
