@@ -16,7 +16,7 @@ jobs:
       - name: Install Brioche
         uses: brioche-dev/setup-brioche@v1
       - name: Install SQLx CLI
-        run: brioche install --locked -p .
+        run: brioche install --locked --export sqlxCli
       - name: Set up database
         run: |
           cp .env.example .env
