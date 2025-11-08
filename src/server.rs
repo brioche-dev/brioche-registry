@@ -253,8 +253,8 @@ async fn bulk_create_project_tags_handler(
 
         for record in inserted_records {
             tags.push(UpdatedTag {
-                name: record.name.to_string(),
-                tag: record.tag.to_string(),
+                name: record.name.clone(),
+                tag: record.tag.clone(),
                 previous_hash,
             });
         }
