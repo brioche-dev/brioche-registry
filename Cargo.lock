@@ -179,9 +179,9 @@ dependencies = [
 
 [[package]]
 name = "async-compression"
-version = "0.4.32"
+version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a89bce6054c720275ac2432fbba080a66a2106a44a1b804553930ca6909f4e0"
+checksum = "93c1f86859c1af3d514fa19e8323147ff10ea98684e6c7b307912509f50e67b2"
 dependencies = [
  "compression-codecs",
  "compression-core",
@@ -1199,7 +1199,7 @@ dependencies = [
 [[package]]
 name = "brioche-core"
 version = "0.1.6"
-source = "git+https://github.com/brioche-dev/brioche.git#e16e83083870814f80875d0acf40dee10a45c14f"
+source = "git+https://github.com/brioche-dev/brioche.git#cfdefdf4a6aeb0d8a19be1bd4042d961aa4ec3c0"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -1259,7 +1259,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "pathdiff",
- "pem-rfc7468",
+ "pem-rfc7468 1.0.0",
  "petgraph",
  "pin-project-lite",
  "regex",
@@ -1301,7 +1301,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.6"
-source = "git+https://github.com/brioche-dev/brioche.git#e16e83083870814f80875d0acf40dee10a45c14f"
+source = "git+https://github.com/brioche-dev/brioche.git#cfdefdf4a6aeb0d8a19be1bd4042d961aa4ec3c0"
 dependencies = [
  "bincode 2.0.1",
  "bstr",
@@ -1608,9 +1608,9 @@ dependencies = [
 
 [[package]]
 name = "compression-codecs"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef8a506ec4b81c460798f572caead636d57d3d7e940f998160f52bd254bf2d23"
+checksum = "680dc087785c5230f8e8843e2e57ac7c1c90488b6a91b88caa265410568f441b"
 dependencies = [
  "bzip2",
  "compression-core",
@@ -1623,9 +1623,9 @@ dependencies = [
 
 [[package]]
 name = "compression-core"
-version = "0.4.29"
+version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e47641d3deaf41fb1538ac1f54735925e275eaf3bf4d55c81b137fba797e5cbb"
+checksum = "3a9b614a5787ef0c8802a55766480563cb3a93b435898c422ed2a359cf811582"
 
 [[package]]
 name = "concurrent-queue"
@@ -2021,9 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.366.0"
+version = "0.367.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93c7e5b8c90f0c994a13b00642a83a855311443a5a475ff093a0167ef58f8725"
+checksum = "35bc5bd853f22f22954aff45968f059e5f727755f1818dafba6c19cf1c6a43c2"
 dependencies = [
  "anyhow",
  "az",
@@ -2102,9 +2102,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.242.0"
+version = "0.243.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffebc17daa35ef11ed0ba7758cdc61366a6df4f40b7a8d21c4f03078ae81939a"
+checksum = "70093389f10651aada28d3b535e115aca21888d357e0346ba67ee63600a48218"
 dependencies = [
  "indexmap 2.12.0",
  "proc-macro-rules",
@@ -2158,7 +2158,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid",
- "pem-rfc7468",
+ "pem-rfc7468 0.7.0",
  "zeroize",
 ]
 
@@ -4315,24 +4315,24 @@ checksum = "84de9d95a6d2547d9b77ee3f25fa0ee32e3c3a6484d47a55adebc0439c077992"
 
 [[package]]
 name = "jiff"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be1f93b8b1eb69c77f24bbb0afdf66f54b632ee39af40ca21c4365a1d7347e49"
+checksum = "49cce2b81f2098e7e3efc35bc2e0a6b7abec9d34128283d7a26fa8f32a6dbb35"
 dependencies = [
  "jiff-static",
  "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
- "serde",
- "windows-sys 0.59.0",
+ "serde_core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "jiff-static"
-version = "0.2.15"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03343451ff899767262ec32146f6d559dd759fdadf42ff0e227c7c48f72594b4"
+checksum = "980af8b43c3ad5d8d349ace167ec8170839f753a42d233ba19e08afe1850fa69"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5220,6 +5220,15 @@ name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
+dependencies = [
+ "base64ct",
+]
+
+[[package]]
+name = "pem-rfc7468"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6305423e0e7738146434843d1694d621cce767262b2a86910beab705e4493d9"
 dependencies = [
  "base64ct",
 ]
@@ -6376,9 +6385,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.275.0"
+version = "0.276.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1683de6d6a1436ad708b17f56081b31f3944eb4539dbc1e755eab832852364c"
+checksum = "7d64a436af65a4fb070cd22d69d80bd97f5a9c67d31c2d0809a9fe0e84c59096"
 dependencies = [
  "deno_error",
  "num-bigint",
