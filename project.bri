@@ -1,0 +1,4 @@
+import sqlxCli from "sqlx_cli";
+
+// Re-export each dev tool
+export { sqlxCli };

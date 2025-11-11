@@ -13,13 +13,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+      - name: Install Brioche
+        uses: brioche-dev/setup-brioche@v1
       - name: Install SQLx CLI
-        run: |
-          mkdir -p ~/.local/bin
-          curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/sqlx -o ~/.local/bin/sqlx
-          curl -L https://development-content.brioche.dev/tools/sqlx-cli_v0.7.1/cargo-sqlx -o ~/.local/bin/cargo-sqlx
-          chmod +x ~/.local/bin/sqlx ~/.local/bin/cargo-sqlx
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        run: brioche install --locked --export sqlxCli
       - name: Set up database
         run: |
           cp .env.example .env
@@ -35,6 +32,7 @@ jobs:
           cargo sqlx prepare --check
       - name: Check Clippy
         run: cargo clippy --all -- -Dwarnings
+
   test:
     name: Run tests
     runs-on: ubuntu-24.04
