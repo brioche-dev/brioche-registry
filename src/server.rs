@@ -271,15 +271,15 @@ async fn get_project_tag_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path((project_name, tag)): axum::extract::Path<(String, String)>,
 ) -> Result<axum::Json<GetProjectTagResponse>, ServerError> {
-    let records = sqlx::query!(
+    let record = sqlx::query!(
         "SELECT project_hash FROM project_tags WHERE name = $1 AND tag = $2 AND is_current",
         project_name,
         tag,
     )
-    .fetch_all(&state.db_pool)
+    .fetch_optional(&state.db_pool)
     .await
-    .wrap_err("failed to fetch project tags from database")?;
-    let record = records.first().ok_or(ServerError::NotFound)?;
+    .wrap_err("failed to fetch project tag from database")?
+    .ok_or(ServerError::NotFound)?;
 
     let project_hash: Result<ProjectHash, _> = record.project_hash.parse();
     let project_hash = project_hash
