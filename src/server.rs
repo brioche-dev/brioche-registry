@@ -19,22 +19,31 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         .make_span_with(move |req: &axum::http::Request<Body>| {
             let request_id = ulid::Ulid::new();
 
-            let connect_info = req
-                .extensions()
-                .get::<axum::extract::ConnectInfo<SocketAddr>>();
-            let received_ip = connect_info.map(|connect_info| connect_info.0.ip().to_string());
-            let received_ip = received_ip.as_deref().unwrap_or("<unknown>");
-            let forwarded_for = req
-                .headers()
-                .get_all("X-Forwarded-For")
-                .into_iter()
-                .flat_map(|forwarded_for| forwarded_for.as_bytes().split_str(","))
-                .map(|forwarded_for| String::from_utf8_lossy(forwarded_for.trim()));
-            let client_ips = std::iter::once(Cow::Borrowed(received_ip)).chain(forwarded_for);
-            let client_ip = client_ips
-                .take(proxy_layers + 1)
-                .last()
-                .unwrap_or(Cow::Borrowed("<unknown>"));
+            // Determine client IP based on proxy configuration
+            let client_ip = {
+                // Try X-Forwarded-For first if we're behind proxies
+                let forwarded_ip = if proxy_layers > 0 {
+                    req.headers()
+                        .get_all("X-Forwarded-For")
+                        .into_iter()
+                        .flat_map(|header| header.as_bytes().split_str(","))
+                        .map(|value| String::from_utf8_lossy(value.trim()))
+                        .take(proxy_layers)
+                        .last()
+                } else {
+                    None
+                };
+
+                // Fall back to direct connection IP only if needed
+                forwarded_ip.unwrap_or_else(|| {
+                    req.extensions()
+                        .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                        // And as a last resort, fallback to "<unknown>"
+                        .map_or(Cow::Borrowed("<unknown>"), |connect_info| {
+                            Cow::Owned(connect_info.0.ip().to_string())
+                        })
+                })
+            };
 
             let user_agent = req
                 .headers()
