@@ -1325,6 +1325,7 @@ dependencies = [
  "dotenvy",
  "envy",
  "eyre",
+ "password-hash",
  "serde",
  "serde_json",
  "sqlx",
