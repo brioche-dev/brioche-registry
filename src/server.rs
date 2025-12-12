@@ -222,7 +222,7 @@ async fn bulk_create_project_tags_handler(
         // Run a query to make sure the current tag matches the expected
         // project hash. This is a sanity check
 
-        let records = sqlx::query!(
+        let record = sqlx::query!(
             r#"
                 SELECT project_hash
                 FROM project_tags
@@ -231,14 +231,12 @@ async fn bulk_create_project_tags_handler(
             tag.project_name,
             tag.tag,
         )
-        .fetch_all(&mut *db_transaction)
+        .fetch_optional(&mut *db_transaction)
         .await
+        .wrap_err("failed to get updated project tag")
+        .map_err(ServerError::other)?
+        .ok_or_eyre("updated project tag not found")
         .map_err(ServerError::other)?;
-
-        let record = records
-            .first()
-            .ok_or_eyre("failed to get updated project tag")
-            .map_err(ServerError::other)?;
         let record_project_hash: Result<ProjectHash, _> = record.project_hash.parse();
         let record_project_hash = record_project_hash
             .map_err(|error| eyre::eyre!(error))
