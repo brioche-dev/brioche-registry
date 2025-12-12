@@ -251,13 +251,15 @@ async fn bulk_create_project_tags_handler(
             .first()
             .and_then(|record| record.project_hash.parse().ok());
 
-        for record in inserted_records {
-            tags.push(UpdatedTag {
-                name: record.name.clone(),
-                tag: record.tag.clone(),
+        let new_tags: Vec<_> = inserted_records
+            .into_iter()
+            .map(|record| UpdatedTag {
+                name: record.name,
+                tag: record.tag,
                 previous_hash,
-            });
-        }
+            })
+            .collect();
+        tags.extend(new_tags);
     }
 
     db_transaction.commit().await.map_err(ServerError::other)?;
