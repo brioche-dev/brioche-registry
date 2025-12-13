@@ -11,6 +11,7 @@ use brioche_core::{
 };
 use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
+use password_hash::PasswordHashString;
 use tracing::Span;
 
 pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::Result<()> {
@@ -117,13 +118,17 @@ async fn shutdown_signal() {
 }
 
 pub struct ServerState {
-    pub env: super::ServerEnv,
     pub proxy_layers: usize,
     pub db_pool: sqlx::PgPool,
+    password_hash: PasswordHashString,
 }
 
 impl ServerState {
     pub async fn new(env: super::ServerEnv) -> eyre::Result<Self> {
+        let password_hash = PasswordHashString::new(&env.password_hash)
+            .map_err(|error| eyre::eyre!(error))
+            .wrap_err("invalid password hash format")?;
+
         let db_opts = sqlx::postgres::PgConnectOptions::from_str(&env.database_url)?;
         let mut db_pool_opts = sqlx::postgres::PgPoolOptions::new();
 
@@ -153,16 +158,14 @@ impl ServerState {
         tracing::info!("set up database connection");
 
         Ok(Self {
-            env,
             proxy_layers,
             db_pool,
+            password_hash,
         })
     }
 
-    fn password_hash(&self) -> eyre::Result<argon2::PasswordHash<'_>> {
-        let password_hash =
-            argon2::PasswordHash::new(&self.env.password_hash).wrap_err("invalid password hash")?;
-        Ok(password_hash)
+    fn password_hash(&self) -> argon2::PasswordHash<'_> {
+        self.password_hash.password_hash()
     }
 
     async fn handle_shutdown(&self) {
@@ -321,7 +324,7 @@ impl axum::extract::FromRequestParts<Arc<ServerState>> for Authenticated {
 
         let username_matches = authorization.username() == "admin";
         let password_matches = argon2::Argon2::default()
-            .verify_password(authorization.password().as_bytes(), &state.password_hash()?)
+            .verify_password(authorization.password().as_bytes(), &state.password_hash())
             .is_ok();
         if username_matches && password_matches {
             Ok(Self(state.clone()))
