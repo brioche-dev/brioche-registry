@@ -20,22 +20,31 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         .make_span_with(move |req: &axum::http::Request<Body>| {
             let request_id = ulid::Ulid::new();
 
-            let connect_info = req
-                .extensions()
-                .get::<axum::extract::ConnectInfo<SocketAddr>>();
-            let received_ip = connect_info.map(|connect_info| connect_info.0.ip().to_string());
-            let received_ip = received_ip.as_deref().unwrap_or("<unknown>");
-            let forwarded_for = req
-                .headers()
-                .get_all("X-Forwarded-For")
-                .into_iter()
-                .flat_map(|forwarded_for| forwarded_for.as_bytes().split_str(","))
-                .map(|forwarded_for| String::from_utf8_lossy(forwarded_for.trim()));
-            let client_ips = std::iter::once(Cow::Borrowed(received_ip)).chain(forwarded_for);
-            let client_ip = client_ips
-                .take(proxy_layers + 1)
-                .last()
-                .unwrap_or(Cow::Borrowed("<unknown>"));
+            // Determine client IP based on proxy configuration
+            let client_ip = {
+                // Try X-Forwarded-For first if we're behind proxies
+                let forwarded_ip = if proxy_layers > 0 {
+                    req.headers()
+                        .get_all("X-Forwarded-For")
+                        .into_iter()
+                        .flat_map(|header| header.as_bytes().split_str(","))
+                        .map(|value| String::from_utf8_lossy(value.trim()))
+                        .take(proxy_layers)
+                        .last()
+                } else {
+                    None
+                };
+
+                // Fall back to direct connection IP only if needed
+                forwarded_ip.unwrap_or_else(|| {
+                    req.extensions()
+                        .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                        // And as a last resort, fallback to "<unknown>"
+                        .map_or(Cow::Borrowed("<unknown>"), |connect_info| {
+                            Cow::Owned(connect_info.0.ip().to_string())
+                        })
+                })
+            };
 
             let user_agent = req
                 .headers()
@@ -83,6 +92,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             "/v0/project-tags/{project_name}/{tag}",
             axum::routing::get(get_project_tag_handler),
         )
+        .layer(tower_http::compression::CompressionLayer::new())
         .layer(trace_layer)
         .with_state(state.clone());
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
@@ -225,7 +235,7 @@ async fn bulk_create_project_tags_handler(
         // Run a query to make sure the current tag matches the expected
         // project hash. This is a sanity check
 
-        let records = sqlx::query!(
+        let record = sqlx::query!(
             r#"
                 SELECT project_hash
                 FROM project_tags
@@ -234,14 +244,12 @@ async fn bulk_create_project_tags_handler(
             tag.project_name,
             tag.tag,
         )
-        .fetch_all(&mut *db_transaction)
+        .fetch_optional(&mut *db_transaction)
         .await
+        .wrap_err("failed to get updated project tag")
+        .map_err(ServerError::other)?
+        .ok_or_eyre("updated project tag not found")
         .map_err(ServerError::other)?;
-
-        let record = records
-            .first()
-            .ok_or_eyre("failed to get updated project tag")
-            .map_err(ServerError::other)?;
         let record_project_hash: Result<ProjectHash, _> = record.project_hash.parse();
         let record_project_hash = record_project_hash
             .map_err(|error| eyre::eyre!(error))
@@ -254,13 +262,15 @@ async fn bulk_create_project_tags_handler(
             .first()
             .and_then(|record| record.project_hash.parse().ok());
 
-        for record in inserted_records {
-            tags.push(UpdatedTag {
-                name: record.name.clone(),
-                tag: record.tag.clone(),
+        let new_tags: Vec<_> = inserted_records
+            .into_iter()
+            .map(|record| UpdatedTag {
+                name: record.name,
+                tag: record.tag,
                 previous_hash,
-            });
-        }
+            })
+            .collect();
+        tags.extend(new_tags);
     }
 
     db_transaction.commit().await.map_err(ServerError::other)?;
@@ -272,15 +282,15 @@ async fn get_project_tag_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path((project_name, tag)): axum::extract::Path<(String, String)>,
 ) -> Result<axum::Json<GetProjectTagResponse>, ServerError> {
-    let records = sqlx::query!(
+    let record = sqlx::query!(
         "SELECT project_hash FROM project_tags WHERE name = $1 AND tag = $2 AND is_current",
         project_name,
         tag,
     )
-    .fetch_all(&state.db_pool)
+    .fetch_optional(&state.db_pool)
     .await
-    .wrap_err("failed to fetch project tags from database")?;
-    let record = records.first().ok_or(ServerError::NotFound)?;
+    .wrap_err("failed to fetch project tag from database")?
+    .ok_or(ServerError::NotFound)?;
 
     let project_hash: Result<ProjectHash, _> = record.project_hash.parse();
     let project_hash = project_hash
