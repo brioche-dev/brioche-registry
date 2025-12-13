@@ -82,6 +82,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
             "/v0/project-tags/{project_name}/{tag}",
             axum::routing::get(get_project_tag_handler),
         )
+        .layer(tower_http::compression::CompressionLayer::new())
         .layer(trace_layer)
         .with_state(state.clone());
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
