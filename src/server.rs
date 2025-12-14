@@ -188,7 +188,8 @@ async fn bulk_create_project_tags_handler(
 ) -> Result<axum::Json<CreateProjectTagsResponse>, ServerError> {
     let mut db_transaction = state.db_pool.begin().await.map_err(ServerError::other)?;
 
-    let mut tags = vec![];
+    // Pre-allocate capacity for tags vector with the number of tags
+    let mut tags = Vec::with_capacity(project_tags.tags.len());
 
     for tag in &project_tags.tags {
         let project_hash_value = tag.project_hash.to_string();
