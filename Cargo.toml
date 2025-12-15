@@ -48,3 +48,10 @@ url = { version = "2.5.7", features = ["serde"] }
 
 [profile.dev]
 split-debuginfo = "unpacked"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 2
+panic = "abort"
+strip = "debuginfo"
