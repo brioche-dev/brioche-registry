@@ -45,3 +45,11 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
 ulid = "1.2.1"
 url = { version = "2.5.7", features = ["serde"] }
+
+[profile.dev]
+split-debuginfo = "unpacked"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "debuginfo"
