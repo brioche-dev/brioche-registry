@@ -182,6 +182,7 @@ struct Healthcheck {
     status: &'static str,
 }
 
+#[tracing::instrument(skip_all, fields(tag_count = project_tags.tags.len()))]
 async fn bulk_create_project_tags_handler(
     Authenticated(state): Authenticated,
     axum::Json(project_tags): axum::Json<CreateProjectTagsRequest>,
@@ -276,6 +277,7 @@ async fn bulk_create_project_tags_handler(
     Ok(axum::Json(CreateProjectTagsResponse { tags }))
 }
 
+#[tracing::instrument(skip(state))]
 async fn get_project_tag_handler(
     axum::extract::State(state): axum::extract::State<Arc<ServerState>>,
     axum::extract::Path((project_name, tag)): axum::extract::Path<(String, String)>,
