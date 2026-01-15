@@ -9,7 +9,6 @@ use brioche_core::{
         CreateProjectTagsRequest, CreateProjectTagsResponse, GetProjectTagResponse, UpdatedTag,
     },
 };
-use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
 use password_hash::PasswordHashString;
 use tracing::Span;
@@ -27,8 +26,8 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
                     req.headers()
                         .get_all("X-Forwarded-For")
                         .into_iter()
-                        .flat_map(|header| header.as_bytes().split_str(","))
-                        .map(|value| String::from_utf8_lossy(value.trim()))
+                        .flat_map(|header| header.as_bytes().split(|&b| b == b','))
+                        .map(|value| String::from_utf8_lossy(value.trim_ascii()))
                         .take(proxy_layers)
                         .last()
                 } else {
