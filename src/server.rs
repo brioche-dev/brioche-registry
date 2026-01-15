@@ -27,9 +27,8 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
                         .get_all("X-Forwarded-For")
                         .into_iter()
                         .flat_map(|header| header.as_bytes().split(|&b| b == b','))
+                        .nth(proxy_layers.saturating_sub(1))
                         .map(|value| String::from_utf8_lossy(value.trim_ascii()))
-                        .take(proxy_layers)
-                        .last()
                 } else {
                     None
                 };
