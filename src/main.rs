@@ -5,6 +5,7 @@ use clap::Parser;
 use eyre::Context as _;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+mod request_metadata;
 mod server;
 
 #[derive(Debug, Parser)]
