@@ -1,5 +1,3 @@
-use std::{borrow::Cow, net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration};
-
 use argon2::PasswordVerifier;
 use axum::body::Body;
 use axum_extra::headers::{Authorization, authorization::Basic};
@@ -11,7 +9,10 @@ use brioche_core::{
 };
 use eyre::{Context as _, OptionExt as _};
 use password_hash::PasswordHashString;
+use std::{net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration};
 use tracing::Span;
+
+use crate::request_metadata::{extract_forwarded_ip, extract_user_agent};
 
 pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::Result<()> {
     let proxy_layers = state.proxy_layers;
@@ -19,37 +20,18 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
         .make_span_with(move |req: &axum::http::Request<Body>| {
             let request_id = ulid::Ulid::new();
 
-            // Determine client IP based on proxy configuration
-            let client_ip = {
-                // Try X-Forwarded-For first if we're behind proxies
-                let forwarded_ip = if proxy_layers > 0 {
-                    req.headers()
-                        .get_all("X-Forwarded-For")
-                        .into_iter()
-                        .flat_map(|header| header.as_bytes().split(|&b| b == b','))
-                        .nth(proxy_layers.saturating_sub(1))
-                        .map(|value| String::from_utf8_lossy(value.trim_ascii()))
-                } else {
-                    None
-                };
+            // Fall back to direct connection IP only if needed
+            let fallback_ip = req
+                .extensions()
+                .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                // And as a last resort, fallback to "<unknown>"
+                .map_or_else(
+                    || "<unknown>".into(),
+                    |connect_info| connect_info.0.ip().to_string().into(),
+                );
+            let client_ip = extract_forwarded_ip(req.headers(), proxy_layers, fallback_ip);
 
-                // Fall back to direct connection IP only if needed
-                forwarded_ip.unwrap_or_else(|| {
-                    req.extensions()
-                        .get::<axum::extract::ConnectInfo<SocketAddr>>()
-                        // And as a last resort, fallback to "<unknown>"
-                        .map_or(Cow::Borrowed("<unknown>"), |connect_info| {
-                            Cow::Owned(connect_info.0.ip().to_string())
-                        })
-                })
-            };
-
-            let user_agent = req
-                .headers()
-                .get("User-Agent")
-                .map_or("<unknown>", |user_agent| {
-                    user_agent.to_str().unwrap_or("<invalid>")
-                });
+            let user_agent = extract_user_agent(req.headers());
 
             tracing::info_span!(
                 "request",

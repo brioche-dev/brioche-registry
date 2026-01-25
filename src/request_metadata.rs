@@ -1,5 +1,4 @@
 use axum::http::header::HeaderMap;
-use bstr::ByteSlice as _;
 use std::borrow::Cow;
 
 const UNKNOWN_USER_AGENT: &str = "<unknown>";
@@ -15,10 +14,12 @@ pub fn extract_forwarded_ip<'a>(
     headers
         .get_all("X-Forwarded-For")
         .into_iter()
-        .flat_map(|header| header.as_bytes().split_str(","))
+        .flat_map(|header| header.as_bytes().split(|&b| b == b','))
         .take(proxy_layers)
         .last()
-        .map_or(fallback_ip, |value| String::from_utf8_lossy(value.trim()))
+        .map_or(fallback_ip, |value| {
+            String::from_utf8_lossy(value.trim_ascii())
+        })
 }
 
 /// Extracts the user agent from headers.
