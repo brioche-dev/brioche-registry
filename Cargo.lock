@@ -1320,7 +1320,6 @@ dependencies = [
  "axum",
  "axum-extra",
  "brioche-core",
- "bstr",
  "clap",
  "color-eyre",
  "dotenvy",
