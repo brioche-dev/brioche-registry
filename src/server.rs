@@ -192,7 +192,7 @@ async fn bulk_create_project_tags_handler(
     let mut tags = Vec::with_capacity(project_tags.tags.len());
 
     for tag in &project_tags.tags {
-        let project_hash_value = tag.project_hash.to_string();
+        let project_hash_value = tag.project_hash.blake3().to_hex();
         let update_result = sqlx::query!(
             r#"
                 UPDATE project_tags
@@ -208,7 +208,7 @@ async fn bulk_create_project_tags_handler(
             "#,
             tag.project_name,
             tag.tag,
-            project_hash_value,
+            project_hash_value.as_str(),
         )
         .fetch_all(&mut *db_transaction)
         .await
@@ -227,7 +227,7 @@ async fn bulk_create_project_tags_handler(
             "#,
             tag.project_name,
             tag.tag,
-            project_hash_value,
+            project_hash_value.as_str(),
         )
         .fetch_all(&mut *db_transaction)
         .await
