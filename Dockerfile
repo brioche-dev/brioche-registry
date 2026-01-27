@@ -1,4 +1,4 @@
-FROM docker.io/library/rust:1.92.0-trixie AS builder
+FROM docker.io/library/rust:1.93.0-trixie AS builder
 
 WORKDIR /src/brioche-registry
 
