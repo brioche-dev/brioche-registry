@@ -54,7 +54,7 @@ mod tests {
         let headers = headers_with_x_forwarded_for(&["client-ip, proxy1-ip"]);
 
         let result = extract_forwarded_ip(&headers, 0, FALLBACK.into());
-        assert_eq!(result.as_ref(), FALLBACK);
+        assert_eq!(result, FALLBACK);
     }
 
     #[test]
@@ -62,13 +62,13 @@ mod tests {
         let headers = headers_with_x_forwarded_for(&["client-ip, proxy1-ip, proxy2-ip"]);
 
         let result = extract_forwarded_ip(&headers, 1, FALLBACK.into());
-        assert_eq!(result.as_ref(), "client-ip");
+        assert_eq!(result, "client-ip");
 
         let result = extract_forwarded_ip(&headers, 2, FALLBACK.into());
-        assert_eq!(result.as_ref(), "proxy1-ip");
+        assert_eq!(result, "proxy1-ip");
 
         let result = extract_forwarded_ip(&headers, 3, FALLBACK.into());
-        assert_eq!(result.as_ref(), "proxy2-ip");
+        assert_eq!(result, "proxy2-ip");
     }
 
     #[test]
@@ -76,7 +76,7 @@ mod tests {
         let headers = headers_with_x_forwarded_for(&["client-ip, proxy1-ip"]);
 
         let result = extract_forwarded_ip(&headers, 5, FALLBACK.into());
-        assert_eq!(result.as_ref(), "proxy1-ip");
+        assert_eq!(result, "proxy1-ip");
     }
 
     #[test]
@@ -84,7 +84,7 @@ mod tests {
         let headers = headers_with_x_forwarded_for(&[""]);
 
         let result = extract_forwarded_ip(&headers, 1, FALLBACK.into());
-        assert_eq!(result.as_ref(), "");
+        assert_eq!(result, "");
     }
 
     #[test]
@@ -92,7 +92,7 @@ mod tests {
         let headers = HeaderMap::new();
 
         let result = extract_forwarded_ip(&headers, 1, FALLBACK.into());
-        assert_eq!(result.as_ref(), FALLBACK);
+        assert_eq!(result, FALLBACK);
     }
 
     #[test]
@@ -101,7 +101,7 @@ mod tests {
         headers.insert("User-Agent", HeaderValue::from_static("user-agent"));
 
         let result = extract_user_agent(&headers);
-        assert_eq!(result.as_ref(), "user-agent");
+        assert_eq!(result, "user-agent");
     }
 
     #[test]
@@ -109,7 +109,7 @@ mod tests {
         let headers = HeaderMap::new();
 
         let result = extract_user_agent(&headers);
-        assert_eq!(result.as_ref(), UNKNOWN_USER_AGENT);
+        assert_eq!(result, UNKNOWN_USER_AGENT);
     }
 
     #[test]
@@ -121,6 +121,6 @@ mod tests {
         );
 
         let result = extract_user_agent(&headers);
-        assert_eq!(result.as_ref(), INVALID_USER_AGENT);
+        assert_eq!(result, INVALID_USER_AGENT);
     }
 }
