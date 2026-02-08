@@ -16,7 +16,7 @@ argon2 = { version = "0.5.3", features = ["std"] }
 axum = "0.8.8"
 axum-extra = { version = "0.12.5", features = ["tracing", "typed-header"] }
 brioche-core = { git = "https://github.com/brioche-dev/brioche.git" }
-clap = { version = "4.5.56", features = ["derive"] }
+clap = { version = "4.5.57", features = ["derive"] }
 color-eyre = "0.6.5"
 dotenvy = "0.15.7"
 envy = "0.4.2"
