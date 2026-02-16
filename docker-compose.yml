@@ -1,6 +1,6 @@
 services:
   db:
-    image: docker.io/postgres:18.1-trixie
+    image: docker.io/postgres:18.2-trixie
     volumes:
       - db-data:/var/lib/postgresql
     environment:
