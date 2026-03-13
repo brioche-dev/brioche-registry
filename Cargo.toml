@@ -16,7 +16,7 @@ argon2 = { version = "0.5.3", features = ["std"] }
 axum = "0.8.8"
 axum-extra = { version = "0.12.5", features = ["tracing", "typed-header"] }
 brioche-core = { git = "https://github.com/brioche-dev/brioche.git" }
-clap = { version = "4.5.60", features = ["derive"] }
+clap = { version = "4.6.0", features = ["derive"] }
 color-eyre = "0.6.5"
 dotenvy = "0.15.7"
 envy = "0.4.2"
@@ -41,7 +41,7 @@ tokio = { version = "1.50.0", features = [
 ] }
 tower-http = { version = "0.6.8", features = ["trace", "compression-gzip", "compression-zstd"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 ulid = "1.2.1"
 url = { version = "2.5.8", features = ["serde"] }
 
