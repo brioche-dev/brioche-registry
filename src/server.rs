@@ -1,4 +1,5 @@
 use argon2::PasswordVerifier;
+use argon2::password_hash::PasswordHashString;
 use axum::body::Body;
 use axum_extra::headers::{Authorization, authorization::Basic};
 use brioche_core::{
@@ -8,7 +9,6 @@ use brioche_core::{
     },
 };
 use eyre::{Context as _, OptionExt as _};
-use argon2::password_hash::PasswordHashString;
 use std::{net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration};
 use tracing::Span;
 
