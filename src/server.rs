@@ -8,7 +8,7 @@ use brioche_core::{
     },
 };
 use eyre::{Context as _, OptionExt as _};
-use password_hash::PasswordHashString;
+use argon2::password_hash::PasswordHashString;
 use std::{net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration};
 use tracing::Span;
 

@@ -136,7 +136,7 @@ dependencies = [
  "base64ct",
  "blake2",
  "cpufeatures",
- "password-hash 0.5.0",
+ "password-hash",
 ]
 
 [[package]]
@@ -1333,7 +1333,6 @@ dependencies = [
  "dotenvy",
  "envy",
  "eyre",
- "password-hash 0.6.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -5251,12 +5250,6 @@ dependencies = [
  "rand_core 0.6.4",
  "subtle",
 ]
-
-[[package]]
-name = "password-hash"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccbd25f71dd5249dba9ed843d52500c8757a25511560d01a94f4abf56b52a1d5"
 
 [[package]]
 name = "paste"
