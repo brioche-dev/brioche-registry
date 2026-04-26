@@ -614,9 +614,9 @@ dependencies = [
 
 [[package]]
 name = "axum"
-version = "0.8.8"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b52af3cb4058c895d37317bb27508dccc8e5f2d39454016b297bf4a400597b8"
+checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
  "bytes",
@@ -666,9 +666,9 @@ dependencies = [
 
 [[package]]
 name = "axum-extra"
-version = "0.12.5"
+version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fef252edff26ddba56bbcdf2ee3307b8129acb86f5749b68990c168a6fcc9c76"
+checksum = "be44683b41ccb9ab2d23a5230015c9c3c55be97a25e4428366de8873103f7970"
 dependencies = [
  "axum",
  "axum-core",
@@ -1206,7 +1206,7 @@ dependencies = [
 [[package]]
 name = "brioche-core"
 version = "0.1.7"
-source = "git+https://github.com/brioche-dev/brioche.git#3035f7bfd27024c3aca63a3d5ee19d064824e067"
+source = "git+https://github.com/brioche-dev/brioche.git#aabdc3bce38a69671e0311072c9ac37e5bf03724"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -1239,7 +1239,6 @@ dependencies = [
  "brioche-pack",
  "bstr",
  "bytesize",
- "cfg-if 1.0.4",
  "console-subscriber",
  "debug-ignore",
  "deno_ast",
@@ -1310,7 +1309,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.7"
-source = "git+https://github.com/brioche-dev/brioche.git#3035f7bfd27024c3aca63a3d5ee19d064824e067"
+source = "git+https://github.com/brioche-dev/brioche.git#aabdc3bce38a69671e0311072c9ac37e5bf03724"
 dependencies = [
  "bincode 2.0.1",
  "bstr",
@@ -1532,9 +1531,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.0"
+version = "4.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b193af5b67834b676abd72466a96c1024e6a6ad978a1f484bd90b85c94041351"
+checksum = "1ddb117e43bbf7dacf0a4190fef4d345b9bad68dfc649cb349e7d17d28428e51"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1554,9 +1553,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.6.0"
+version = "4.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1110bd8a634a1ab8cb04345d8d878267d57c3cf1b38d91b71af6686408bbca6a"
+checksum = "f2ce8604710f6733aa641a2b3731eaa1e8b3d9973d5e3565da11800813f997a9"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -2072,9 +2071,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.397.0"
+version = "0.398.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58f7d1f9e7e66160164ea5ec379d58b56446afc568dff83fb9d7ef1fd3fb4a21"
+checksum = "b75cca01372f2c47ef715908c68019d07f15bce3aad4a420444c16069a4e0791"
 dependencies = [
  "anyhow",
  "az",
@@ -2103,11 +2102,13 @@ dependencies = [
  "smallvec",
  "sourcemap",
  "static_assertions",
+ "sys_traits",
  "thiserror 2.0.18",
  "tokio",
  "url",
  "v8",
  "wasm_dep_analyzer",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2154,9 +2155,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.273.0"
+version = "0.274.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f7c28530a506ec61d8065fd772669961e3df56c418bee9ea5df3eab29e64b1d"
+checksum = "b9560662cdbffa3428ebac40f3ea5fb46ef8b557c41b04f62af045e56defd487"
 dependencies = [
  "indexmap 2.13.0",
  "proc-macro2",
@@ -2466,9 +2467,9 @@ dependencies = [
 
 [[package]]
 name = "fastcdc"
-version = "3.2.1"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf51ceb43e96afbfe4dd5c6f6082af5dfd60e220820b8123792d61963f2ce6bc"
+checksum = "b2613fe3f26b5958b5cd1cb2a07b58c1f3411adaa16abd6b0882279b1eb08c37"
 dependencies = [
  "async-stream",
  "tokio",
@@ -6581,9 +6582,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.306.0"
+version = "0.307.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9741cf5a91953f46cd49d5d20152d49e0cc4eddc4ce4c6d964a855f30254c642"
+checksum = "5804c1a650326aed05a374a062d4bd9c169bde371330b3e82659ac3ed8463ecd"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -7934,9 +7935,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.51.1"
+version = "1.52.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c"
+checksum = "b67dee974fe86fd92cc45b7a95fdd2f99a36a6d7b0d431a231178d3d670bbcc6"
 dependencies = [
  "bytes",
  "libc",
@@ -9498,9 +9499,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.5.0"
+version = "8.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2726508a48f38dceb22b35ecbbd2430efe34ff05c62bd3285f965d7911b33464"
+checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
 dependencies = [
  "bzip2",
  "crc32fast",
