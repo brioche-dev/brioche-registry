@@ -32,13 +32,13 @@ sqlx = { version = "0.8.6", features = [
     "json",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.52.1", features = [
+tokio = { version = "1.52.3", features = [
     "rt-multi-thread",
     "net",
     "signal",
     "sync",
 ] }
-tower-http = { version = "0.6.8", features = ["trace", "compression-gzip", "compression-zstd"] }
+tower-http = { version = "0.6.10", features = ["trace", "compression-gzip", "compression-zstd"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 ulid = "1.2.1"
