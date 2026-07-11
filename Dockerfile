@@ -1,4 +1,4 @@
-FROM docker.io/library/rust:1.96.0-trixie AS builder
+FROM docker.io/library/rust:1.97.0-trixie AS builder
 
 WORKDIR /src/brioche-registry
 
@@ -15,7 +15,7 @@ COPY --from=builder /app/bin/brioche-registry /usr/local/bin/brioche-registry
 ENV DEBIAN_FRONTEND=O
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y bash=5.2.37-2+b9 curl=8.14.1-2+deb13u3 fuse3=3.17.2-3 sqlite3=3.46.1-7+deb13u1 ca-certificates=20250419; \
+    apt-get install -y bash=5.2.37-2+b9 curl=8.14.1-2+deb13u4 fuse3=3.17.2-3 sqlite3=3.46.1-7+deb13u1 ca-certificates=20250419; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
