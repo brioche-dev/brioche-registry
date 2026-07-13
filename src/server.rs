@@ -18,7 +18,7 @@ pub async fn start_server(state: Arc<ServerState>, addr: &SocketAddr) -> eyre::R
     let proxy_layers = state.proxy_layers;
     let trace_layer = tower_http::trace::TraceLayer::new_for_http()
         .make_span_with(move |req: &axum::http::Request<Body>| {
-            let request_id = ulid::Ulid::new();
+            let request_id = ulid::Ulid::r#gen();
 
             // Fall back to direct connection IP only if needed
             let fallback_ip = req
