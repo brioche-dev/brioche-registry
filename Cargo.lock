@@ -834,14 +834,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "biome_aria"
+version = "0.5.7"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
+dependencies = [
+ "biome_aria_metadata",
+ "biome_string_case",
+]
+
+[[package]]
+name = "biome_aria_metadata"
+version = "0.5.7"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
+dependencies = [
+ "biome_deserialize",
+ "biome_deserialize_macros",
+ "biome_string_case",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "biome_console"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c672a9e31e47f8df74549a570ea3245a93ce3404115c724bb16762fcbbfe17e1"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_markup",
  "biome_text_size",
- "schemars 0.8.22",
  "serde",
  "termcolor",
  "unicode-segmentation",
@@ -850,31 +873,24 @@ dependencies = [
 
 [[package]]
 name = "biome_deserialize"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b4443260d505148169f5fb35634c2a60d8489882f8c9c3f1db8b7cf0cb57632"
+version = "0.6.0"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_console",
- "biome_deserialize_macros",
  "biome_diagnostics",
  "biome_json_parser",
  "biome_json_syntax",
  "biome_rowan",
- "bitflags 2.13.1",
- "indexmap 1.9.3",
- "serde",
- "serde_json",
- "tracing",
+ "enumflags2",
 ]
 
 [[package]]
 name = "biome_deserialize_macros"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fc1244cc5f0cc267bd26b601e9ccd6851c6a4d395bba07e27c2de641dc84479"
+version = "0.6.0"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
- "convert_case 0.6.0",
- "proc-macro-error",
+ "biome_string_case",
+ "proc-macro-error2",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -883,8 +899,7 @@ dependencies = [
 [[package]]
 name = "biome_diagnostics"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe1317b6d610541c4e6a0e1f803a946f153ace3468bbc77a8f273dcb04ee526f"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "backtrace",
  "biome_console",
@@ -893,19 +908,18 @@ dependencies = [
  "biome_rowan",
  "biome_text_edit",
  "biome_text_size",
- "bitflags 2.13.1",
- "bpaf",
- "oxc_resolver",
+ "enumflags2",
  "serde",
+ "serde_json",
  "termcolor",
+ "terminal_size",
  "unicode-width 0.1.14",
 ]
 
 [[package]]
 name = "biome_diagnostics_categories"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "832080d68a2ee2f198d98ff5d26fc0f5c2566907f773d105a4a049ee07664d19"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "quote",
  "serde",
@@ -914,10 +928,9 @@ dependencies = [
 [[package]]
 name = "biome_diagnostics_macros"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "540fec04d2e789fb992128c63d111b650733274afffff1cb3f26c8dff5167d3b"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
- "proc-macro-error",
+ "proc-macro-error2",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -926,28 +939,26 @@ dependencies = [
 [[package]]
 name = "biome_formatter"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d351a9dc49ae024220a83c44329ab14a9e66887a7ca51fc7ae875e9e56f626c"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_console",
  "biome_deserialize",
  "biome_deserialize_macros",
  "biome_diagnostics",
  "biome_rowan",
+ "biome_string_case",
+ "camino",
  "cfg-if 1.0.4",
- "countme",
  "drop_bomb",
- "indexmap 1.9.3",
- "rustc-hash 1.1.0",
- "tracing",
+ "indexmap 2.14.0",
+ "rustc-hash 2.1.3",
  "unicode-width 0.1.14",
 ]
 
 [[package]]
 name = "biome_js_factory"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c9847f4dfd16ee242d12b90f96f6b2eb33238dfc4eac7b5c045e14eebe717b7"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_js_syntax",
  "biome_rowan",
@@ -956,31 +967,28 @@ dependencies = [
 [[package]]
 name = "biome_js_formatter"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bc1f8b67a8fa45555a7a9ea1004eca73c159b7f1941050311d35e312cff3bb8"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
- "biome_console",
  "biome_deserialize",
  "biome_deserialize_macros",
  "biome_diagnostics_categories",
  "biome_formatter",
  "biome_js_factory",
  "biome_js_syntax",
- "biome_json_syntax",
  "biome_rowan",
+ "biome_string_case",
+ "biome_suppression",
  "biome_text_size",
  "biome_unicode_table",
- "cfg-if 1.0.4",
+ "camino",
  "smallvec",
- "tracing",
  "unicode-width 0.1.14",
 ]
 
 [[package]]
 name = "biome_js_parser"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72eabd0387646248dd76d18f7ac20a93158939484fa688492defd76b15673f2e"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_console",
  "biome_diagnostics",
@@ -989,35 +997,33 @@ dependencies = [
  "biome_parser",
  "biome_rowan",
  "biome_unicode_table",
- "bitflags 2.13.1",
- "cfg-if 1.0.4",
  "drop_bomb",
- "indexmap 1.9.3",
- "rustc-hash 1.1.0",
- "serde",
+ "enumflags2",
+ "indexmap 2.14.0",
+ "rustc-hash 2.1.3",
  "serde_json",
  "smallvec",
  "tracing",
- "unicode-bom",
 ]
 
 [[package]]
 name = "biome_js_syntax"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38a524bd8b1f5f7b3355dfe2744196227ee15e9aa3446d562deb9ed511cf2015"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
- "biome_console",
- "biome_diagnostics",
+ "biome_aria",
+ "biome_aria_metadata",
  "biome_rowan",
+ "biome_string_case",
+ "camino",
+ "enumflags2",
  "serde",
 ]
 
 [[package]]
 name = "biome_json_factory"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e409eb289040f3660689dad178b00b6ac8cfa9a7fffd8225f35cb6b3d36437cf"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_json_syntax",
  "biome_rowan",
@@ -1026,8 +1032,7 @@ dependencies = [
 [[package]]
 name = "biome_json_parser"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c6d23fb9b683e6356c094b4a0cb38f8aa0acee60ce9c3ef24628d21a204de4d"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_console",
  "biome_diagnostics",
@@ -1043,20 +1048,21 @@ dependencies = [
 [[package]]
 name = "biome_json_syntax"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2645ca57f75680d3d390b2482c35db5850b1d849e1f96151a12f15f4abdb097"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_rowan",
+ "biome_string_case",
+ "camino",
+ "directories",
  "serde",
 ]
 
 [[package]]
 name = "biome_markup"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a7f11cf91599594528e97d216044ef4e410a103327212d909f215cbafe2fd9c"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
- "proc-macro-error",
+ "proc-macro-error2",
  "proc-macro2",
  "quote",
 ]
@@ -1064,36 +1070,52 @@ dependencies = [
 [[package]]
 name = "biome_parser"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "955dd999f32c086371d5c0e64b4ea1a50f50c98f1f31a3b9fe17ef47198de19b"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_console",
  "biome_diagnostics",
  "biome_rowan",
- "bitflags 2.13.1",
+ "biome_unicode_table",
  "drop_bomb",
+ "enumflags2",
+ "unicode-bom",
 ]
 
 [[package]]
 name = "biome_rowan"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3c2dc25a7ba6ae89526340034abed6c89fac35b79060786771e32ed4aac77e7"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_text_edit",
  "biome_text_size",
- "countme",
- "hashbrown 0.12.3",
- "memoffset 0.8.0",
- "rustc-hash 1.1.0",
- "tracing",
+ "hashbrown 0.15.5",
+ "rustc-hash 2.1.3",
+ "serde",
+]
+
+[[package]]
+name = "biome_string_case"
+version = "0.5.7"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
+dependencies = [
+ "biome_rowan",
+ "caseless",
+]
+
+[[package]]
+name = "biome_suppression"
+version = "0.5.7"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
+dependencies = [
+ "biome_console",
+ "biome_diagnostics",
+ "biome_rowan",
 ]
 
 [[package]]
 name = "biome_text_edit"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d486fdd96d5dad6428213ce64e6b9eb5bfb2fce6387fe901e844d386283de509"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "biome_text_size",
  "serde",
@@ -1103,8 +1125,7 @@ dependencies = [
 [[package]]
 name = "biome_text_size"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ec604d15cefdced636255400359aeacfdea5d1e79445efc7aa32a0de7f0319b"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 dependencies = [
  "serde",
 ]
@@ -1112,8 +1133,7 @@ dependencies = [
 [[package]]
 name = "biome_unicode_table"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87e8604d34b02180a58af1dbdaac166f1805f27f5370934142a3246f83870952"
+source = "git+https://github.com/biomejs/biome?tag=%40biomejs%2Fbiome%402.5.0#c0b98327a3b14e44d8fbd9a11481bf56c505b8ed"
 
 [[package]]
 name = "bit-set"
@@ -1209,29 +1229,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "bpaf"
-version = "0.9.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c670d65eea33846872d5ccf668c00a94c5c67dbdcc0289ea1c362671ce1ddb82"
-dependencies = [
- "bpaf_derive",
-]
-
-[[package]]
-name = "bpaf_derive"
-version = "0.5.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f7e98cee839b19076cb3ce1afdb62bb182e04ff5f71f70188827002fae91094"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "brioche-core"
 version = "0.1.8"
-source = "git+https://github.com/brioche-dev/brioche.git#5700793a17b276b2d7c23e003a8f8846e82468e1"
+source = "git+https://github.com/brioche-dev/brioche.git#bd21db236e491ef277927e59b67c169d43efce66"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -1240,26 +1240,11 @@ dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-types",
- "biome_console",
- "biome_deserialize",
- "biome_deserialize_macros",
- "biome_diagnostics",
- "biome_diagnostics_categories",
- "biome_diagnostics_macros",
  "biome_formatter",
- "biome_js_factory",
  "biome_js_formatter",
  "biome_js_parser",
  "biome_js_syntax",
- "biome_json_factory",
- "biome_json_parser",
- "biome_json_syntax",
- "biome_markup",
- "biome_parser",
  "biome_rowan",
- "biome_text_edit",
- "biome_text_size",
- "biome_unicode_table",
  "blake3",
  "brioche-pack",
  "bstr",
@@ -1311,7 +1296,7 @@ dependencies = [
  "strum 0.28.0",
  "superconsole",
  "tar",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tick-encoding",
  "tokio",
  "tokio-util",
@@ -1327,20 +1312,20 @@ dependencies = [
  "walkdir",
  "wax",
  "zip",
- "zstd",
+ "zstd 0.14.0",
  "zstd-framed",
 ]
 
 [[package]]
 name = "brioche-pack"
 version = "0.1.8"
-source = "git+https://github.com/brioche-dev/brioche.git#5700793a17b276b2d7c23e003a8f8846e82468e1"
+source = "git+https://github.com/brioche-dev/brioche.git#bd21db236e491ef277927e59b67c169d43efce66"
 dependencies = [
  "bincode",
  "bstr",
  "serde",
  "serde_with",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tick-encoding",
 ]
 
@@ -1360,7 +1345,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx 0.9.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tower-http 0.7.1",
  "tracing",
@@ -1456,6 +1441,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "camino"
+version = "1.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbad30e4b4c14a39e3cc8aed085a12a327257c316619c93581e017bc52be591"
+
+[[package]]
 name = "capacity_builder"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1473,6 +1464,15 @@ checksum = "3b4a6cae9efc04cc6cbb8faf338d2c497c165c83e74509cf4dbedea948bbf6e5"
 dependencies = [
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "caseless"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b6fd507454086c8edfd769ca6ada439193cdb209c7681712ef6275cccbfe5d8"
+dependencies = [
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -1559,9 +1559,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.6"
+version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca"
+checksum = "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1569,9 +1569,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.6"
+version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889"
+checksum = "ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1581,9 +1581,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.6.4"
+version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d012d2b9d65aca7f18f4d9878a045bc17899bba951561ba5ec3c2ba1eed9a061"
+checksum = "f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1688,8 +1688,8 @@ dependencies = [
  "flate2",
  "liblzma",
  "memchr",
- "zstd",
- "zstd-safe",
+ "zstd 0.13.3",
+ "zstd-safe 7.2.4",
 ]
 
 [[package]]
@@ -1779,15 +1779,6 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "convert_case"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
@@ -1825,12 +1816,6 @@ checksum = "77745e017f5edba1a9c1d854f6f3a52dac8a12dd5af5d2f54aecf61e43d80d30"
 dependencies = [
  "libm",
 ]
-
-[[package]]
-name = "countme"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7704b5fdd17b18ae31c4c1da5a2e0305a2bf17b5249300a9ee9ed7b72114c636"
 
 [[package]]
 name = "cpufeatures"
@@ -2106,7 +2091,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2146,16 +2131,16 @@ dependencies = [
  "swc_sourcemap",
  "swc_visit",
  "text_lines",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "unicode-width 0.2.2",
  "url",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.411.0"
+version = "0.412.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8240c244a4643b8df55e5bef415af26581f3bb06101f3c26c9738f0275c36cc3"
+checksum = "580cb2e0d797d75ff3dfc4a8f2b14aa7470f0fa31654a09a83d4cbb42b5eb9b4"
 dependencies = [
  "anyhow",
  "base64",
@@ -2184,7 +2169,7 @@ dependencies = [
  "sourcemap",
  "static_assertions",
  "sys_traits",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "url",
  "uuid",
@@ -2230,9 +2215,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.287.0"
+version = "0.288.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7863f32e66f4ead7146c91c56baf2b85610479e5c205ce46f2a86626f378e579"
+checksum = "977748624aad80164dbe385c8c907bc0041c2e6849f92528e362e03132c64c52"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",
@@ -2242,7 +2227,7 @@ dependencies = [
  "strum_macros 0.27.2",
  "syn 2.0.119",
  "syn-match",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2254,7 +2239,7 @@ dependencies = [
  "deno_error",
  "percent-encoding",
  "sys_traits",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "url",
 ]
 
@@ -2281,9 +2266,9 @@ dependencies = [
 
 [[package]]
 name = "deno_v8"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec1e313db023bc34346611a555c19be6dd91ff0676dc11099334c8e53e15499b"
+checksum = "85cdff08dedf79da6a40f97554f47d59d419ba3df8061b8b31789cd2cbe00433"
 dependencies = [
  "v8",
  "v8x",
@@ -2324,7 +2309,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case 0.10.0",
+ "convert_case",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -2493,6 +2478,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if 1.0.4",
+]
+
+[[package]]
+name = "enumflags2"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
+dependencies = [
+ "enumflags2_derive",
+ "serde",
+]
+
+[[package]]
+name = "enumflags2_derive"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2921,7 +2927,7 @@ dependencies = [
  "regex",
  "signal-hook 0.4.4",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2961,7 +2967,7 @@ dependencies = [
  "gix-quote",
  "gix-trace",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "unicode-bom",
 ]
 
@@ -2991,7 +2997,7 @@ dependencies = [
  "gix-traverse",
  "gix-worktree",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3045,7 +3051,7 @@ dependencies = [
  "gix-sec",
  "gix-utils",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "unicode-bom",
 ]
 
@@ -3059,7 +3065,7 @@ dependencies = [
  "bstr",
  "gix-path",
  "libc",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3078,7 +3084,7 @@ dependencies = [
  "gix-sec",
  "gix-trace",
  "gix-url",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3114,7 +3120,7 @@ dependencies = [
  "gix-trace",
  "gix-traverse",
  "gix-worktree",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3134,7 +3140,7 @@ dependencies = [
  "gix-trace",
  "gix-utils",
  "gix-worktree",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3149,7 +3155,7 @@ dependencies = [
  "gix-path",
  "gix-ref",
  "gix-sec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3199,7 +3205,7 @@ dependencies = [
  "gix-trace",
  "gix-utils",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3212,7 +3218,7 @@ dependencies = [
  "gix-features",
  "gix-path",
  "gix-utils",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3237,7 +3243,7 @@ dependencies = [
  "gix-features",
  "sha1-checked",
  "sha2 0.11.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3299,7 +3305,7 @@ dependencies = [
  "memmap2",
  "rustix 1.1.4",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3310,7 +3316,7 @@ checksum = "d4c69157820343bf1c6e4b88b9808e920900de02e18aaf5862b30ada43814848"
 dependencies = [
  "gix-tempfile",
  "gix-utils",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3359,7 +3365,7 @@ dependencies = [
  "gix-trace",
  "gix-worktree",
  "nonempty",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3406,7 +3412,7 @@ dependencies = [
  "gix-validate",
  "itoa",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3428,7 +3434,7 @@ dependencies = [
  "memmap2",
  "parking_lot",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3451,7 +3457,7 @@ dependencies = [
  "memmap2",
  "parking_lot",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "uluru",
 ]
 
@@ -3464,7 +3470,7 @@ dependencies = [
  "bstr",
  "faster-hex",
  "gix-trace",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3476,7 +3482,7 @@ dependencies = [
  "bstr",
  "gix-trace",
  "gix-validate",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3491,7 +3497,7 @@ dependencies = [
  "gix-config-value",
  "gix-glob",
  "gix-path",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3504,7 +3510,7 @@ dependencies = [
  "gix-config-value",
  "parking_lot",
  "rustix 1.1.4",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3530,7 +3536,7 @@ dependencies = [
  "gix-transport",
  "gix-utils",
  "nonempty",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3561,7 +3567,7 @@ dependencies = [
  "gix-utils",
  "gix-validate",
  "memmap2",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3574,7 +3580,7 @@ dependencies = [
  "gix-hash",
  "gix-validate",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3609,7 +3615,7 @@ dependencies = [
  "gix-hashtable",
  "gix-object",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3634,7 +3640,7 @@ dependencies = [
  "gix-hash",
  "gix-lock",
  "nonempty",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3658,7 +3664,7 @@ dependencies = [
  "gix-worktree",
  "hashbrown 0.16.1",
  "portable-atomic",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "windows-sys 0.61.2",
 ]
 
@@ -3674,7 +3680,7 @@ dependencies = [
  "gix-pathspec",
  "gix-refspec",
  "gix-url",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3716,7 +3722,7 @@ dependencies = [
  "gix-url",
  "parking_lot",
  "reqwest",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3733,7 +3739,7 @@ dependencies = [
  "gix-object",
  "gix-revwalk",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3746,7 +3752,7 @@ dependencies = [
  "gix-path",
  "gix-utils",
  "percent-encoding",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3804,7 +3810,7 @@ dependencies = [
  "gix-path",
  "gix-worktree",
  "io-close",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3831,7 +3837,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e8813f5579b3075ff9c90f7c59cd2b62b4ebb639361f0911648b22d7446cc7c"
 dependencies = [
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "zlib-rs",
 ]
 
@@ -4615,7 +4621,7 @@ dependencies = [
  "jni-sys",
  "log",
  "simd_cesu8",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "walkdir",
  "windows-link",
 ]
@@ -4688,15 +4694,6 @@ dependencies = [
  "ryu-js 0.2.2",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "json-strip-comments"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b271732a960335e715b6b2ae66a086f115c74eb97360e996d2bd809bfc063bba"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -4938,15 +4935,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memoffset"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d61c719bcfbcf5d62b3a09efa6088de8c54bc0bfcd3ea7ae39fcc186108b8de1"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5018,7 +5006,7 @@ dependencies = [
  "bitflags 1.3.2",
  "cfg-if 1.0.4",
  "libc",
- "memoffset 0.7.1",
+ "memoffset",
  "pin-utils",
 ]
 
@@ -5224,7 +5212,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -5262,7 +5250,7 @@ dependencies = [
  "futures-sink",
  "js-sys",
  "pin-project-lite",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -5304,7 +5292,7 @@ dependencies = [
  "opentelemetry_sdk",
  "prost",
  "reqwest",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -5337,7 +5325,7 @@ dependencies = [
  "percent-encoding",
  "portable-atomic",
  "rand 0.9.5",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
 ]
@@ -5359,26 +5347,6 @@ name = "owo-colors"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
-
-[[package]]
-name = "oxc_resolver"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c20bb345f290c46058ba650fef7ca2b579612cf2786b927ebad7b8bec0845a7"
-dependencies = [
- "cfg-if 1.0.4",
- "dashmap 6.2.1",
- "dunce",
- "indexmap 2.14.0",
- "json-strip-comments",
- "once_cell",
- "rustc-hash 2.1.3",
- "serde",
- "serde_json",
- "simdutf8",
- "thiserror 1.0.69",
- "tracing",
-]
 
 [[package]]
 name = "par-core"
@@ -5654,26 +5622,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-error"
-version = "1.0.4"
+name = "proc-macro-error-attr2"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
+checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
 dependencies = [
- "proc-macro-error-attr",
  "proc-macro2",
  "quote",
- "version_check",
 ]
 
 [[package]]
-name = "proc-macro-error-attr"
-version = "1.0.4"
+name = "proc-macro-error2"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
+checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
 dependencies = [
+ "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "version_check",
 ]
 
 [[package]]
@@ -5768,7 +5734,7 @@ dependencies = [
  "rustc-hash 2.1.3",
  "rustls",
  "socket2",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "web-time",
@@ -5791,7 +5757,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tracing",
  "web-time",
@@ -5949,7 +5915,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
 dependencies = [
  "getrandom 0.2.17",
  "libredox",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6072,7 +6038,7 @@ dependencies = [
  "http 1.5.0",
  "reqwest",
  "serde",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tower-service",
 ]
 
@@ -6091,7 +6057,7 @@ dependencies = [
  "reqwest",
  "reqwest-middleware",
  "retry-policies",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "wasmtimer",
@@ -6360,18 +6326,6 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
-dependencies = [
- "dyn-clone",
- "schemars_derive",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "schemars"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
@@ -6392,18 +6346,6 @@ dependencies = [
  "ref-cast",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -6484,17 +6426,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_derive_internals"
-version = "0.29.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "serde_json"
 version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6553,16 +6484,16 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.320.0"
+version = "0.321.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f60d33fe848b2dabcd7c2ac8b515d4023dc459390af641df81ed539fdddda2f6"
+checksum = "fd3b6f6140192f569b88997e2ea7afeef6aa38b64374e84784ea1d1ea35679d3"
 dependencies = [
  "deno_error",
  "deno_v8",
  "num-bigint",
  "serde",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6915,7 +6846,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -6951,7 +6882,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -7031,7 +6962,7 @@ dependencies = [
  "sqlx-postgres 0.9.0",
  "sqlx-sqlite 0.9.0",
  "syn 2.0.119",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "url",
 ]
@@ -7073,7 +7004,7 @@ dependencies = [
  "smallvec",
  "sqlx-core 0.8.6",
  "stringprep",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "whoami 1.6.1",
 ]
@@ -7100,7 +7031,7 @@ dependencies = [
  "sha1 0.11.0",
  "sha2 0.11.0",
  "sqlx-core 0.9.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -7136,7 +7067,7 @@ dependencies = [
  "smallvec",
  "sqlx-core 0.8.6",
  "stringprep",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "whoami 1.6.1",
 ]
@@ -7171,7 +7102,7 @@ dependencies = [
  "smallvec",
  "sqlx-core 0.9.0",
  "stringprep",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "whoami 2.1.2",
 ]
@@ -7195,7 +7126,7 @@ dependencies = [
  "serde",
  "serde_urlencoded",
  "sqlx-core 0.8.6",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "url",
 ]
@@ -7219,7 +7150,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "sqlx-core 0.9.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "url",
 ]
@@ -7354,7 +7285,7 @@ dependencies = [
  "nix 0.30.1",
  "pin-project",
  "take_mut",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -7908,6 +7839,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
+dependencies = [
+ "rustix 1.1.4",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "text_lines"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7927,11 +7868,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -7947,9 +7888,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7971,7 +7912,7 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f2cba90a8223251bc8def9a781f2355c90647f4a620b82e44d710b64e41a9b"
 dependencies = [
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -8785,7 +8726,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a10e6b67c951a84de7029487e0e0a496860dae49f6699edd279d5ff35b8fbf54"
 dependencies = [
  "deno_error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -8813,7 +8754,7 @@ dependencies = [
  "nom 7.1.3",
  "pori",
  "regex",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -9310,7 +9251,7 @@ dependencies = [
  "memchr",
  "typed-path",
  "zopfli",
- "zstd",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -9356,7 +9297,16 @@ version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
 dependencies = [
- "zstd-safe",
+ "zstd-safe 7.2.4",
+]
+
+[[package]]
+name = "zstd"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
+dependencies = [
+ "zstd-safe 8.0.0",
 ]
 
 [[package]]
@@ -9368,7 +9318,7 @@ dependencies = [
  "pin-project-lite",
  "thiserror 1.0.69",
  "tokio",
- "zstd",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -9381,10 +9331,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "zstd-sys"
-version = "2.0.16+zstd.1.5.7"
+name = "zstd-safe"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
+checksum = "ae42c0555055784c70058d19ba8e275528e8a99a706684868ace5da4e716a4ab"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.1.0+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
 dependencies = [
  "cc",
  "pkg-config",
