@@ -1,5 +1,11 @@
 FROM docker.io/library/rust:1.100.0-slim-trixie AS builder
 
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl=8.14.1-2+deb13u7 ca-certificates=20250419+deb13u1; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /src/brioche-registry
 
 COPY Cargo.toml Cargo.lock ./
